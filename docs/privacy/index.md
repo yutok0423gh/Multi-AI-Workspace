@@ -2,12 +2,7 @@
 title: Multi-AI Workspace Privacy Policy
 ---
 
-Privacy policy URL
-The URL must be a publicly accessible HTTPS page that does not require sign-in.
-GitHub Pages example:
-https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/privacy/
-Custom website example:
-https://example.com/privacy-policy
+
 English privacy policy
 Multi-AI Workspace Privacy Policy
 
@@ -87,4 +82,4 @@ For questions concerning this Privacy Policy or the extension’s data practices
 
 Email: chenyutian423@gmail.com
 Project website: https://github.com/Yutok2007/Multi-AI-Workspace
-Replace the two contact placeholders before publishing. The privacy policy, Chrome Web Store disclosures, and actual extension behavior must remain consistent. See the official Disclosure Requirements and Limited Use policy.
+

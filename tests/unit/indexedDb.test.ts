@@ -27,6 +27,7 @@ describe('WorkspaceDatabase', () => {
     expect(deleted).toContain('conversationIndex');
     expect(deleted).toContain('syncQueue');
     expect(deleted).toContain('favorites');
+    expect(deleted).toContain('exportHistory');
   });
 
   it('stores and retrieves a scoped draft record', async () => {
@@ -59,7 +60,6 @@ describe('WorkspaceDatabase', () => {
       'textHighlights',
       'customSites',
       'apiProfiles',
-      'exportHistory',
       'conversationBranches',
       'metadata',
     ]);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { UserBoundPlatformAdapter } from '../platforms/base/UserBoundPlatformAdapter';
 import { useI18n } from '../shared/i18n/I18nContext';
@@ -30,7 +30,14 @@ import {
   scrollConversationPinIntoView,
   type ConversationPointPinTarget,
 } from './conversationPins';
-import { measureMessageRailPosition, spreadRailPercentages } from './messageNavigator';
+import {
+  measureMessageRailPosition,
+  mergeObservedMessageWindows,
+  messageNavigatorScrollBehavior,
+  messageWindowSignature,
+  scrollToMessageRailPosition,
+  spreadRailPercentages,
+} from './messageNavigator';
 import {
   applyHighlightInterval,
   createRangeFromOffsets,
@@ -769,6 +776,7 @@ interface HighlightRectangle {
 interface RailPoint {
   promptIndex: number;
   topPercent: number;
+  scrollPercent: number;
   active: boolean;
 }
 
@@ -817,6 +825,19 @@ function measurePointPinTarget(target: ConversationPointPinTarget): PinTargetRec
   };
 }
 
+function findSharedPromptContainer(messages: PlatformMessage[]): HTMLElement | null {
+  const elements = messages
+    .map((message) => message.element)
+    .filter((element) => element.isConnected);
+  if (!elements.length) return null;
+
+  let container = elements[0].parentElement;
+  while (container && !elements.every((element) => container?.contains(element))) {
+    container = container.parentElement;
+  }
+  return container;
+}
+
 export function ConversationPageOverlay({
   adapter,
   messages,
@@ -828,6 +849,7 @@ export function ConversationPageOverlay({
   onPinTarget,
   onRemovePin = () => undefined,
   showPromptNavigator = true,
+  navigatorRevision = 0,
 }: {
   adapter: UserBoundPlatformAdapter;
   messages: PlatformMessage[];
@@ -839,15 +861,77 @@ export function ConversationPageOverlay({
   onPinTarget?: (target: ConversationPointPinTarget) => Promise<PinTargetMutation>;
   onRemovePin?: (id: string) => void | Promise<void>;
   showPromptNavigator?: boolean;
+  navigatorRevision?: number;
 }) {
   const t = useI18n();
   const [layout, setLayout] = useState<OverlayLayout>(EMPTY_LAYOUT);
   const [pinTargetRectangle, setPinTargetRectangle] = useState<PinTargetRectangle | null>(null);
   const [pinNotice, setPinNotice] = useState<PinTargetMutation | null>(null);
-  const promptMessages = useMemo(
+  const livePromptMessages = useMemo(
     () => (showPromptNavigator ? messages.filter((message) => message.role === 'user') : []),
     [messages, showPromptNavigator],
   );
+  const livePromptContainer = useMemo(
+    () => findSharedPromptContainer(livePromptMessages),
+    [livePromptMessages],
+  );
+  const [promptMessages, setPromptMessages] =
+    useState<PlatformMessage[]>(livePromptMessages);
+  const promptScopeRef = useRef<string | null>(null);
+  const promptContainerRef = useRef<HTMLElement | null>(livePromptContainer);
+  const navigatorRevisionRef = useRef(navigatorRevision);
+  const railPositionCacheRef = useRef(new Map<string, number>());
+
+  useEffect(() => {
+    if (!showPromptNavigator) return;
+    const revisionChanged = navigatorRevisionRef.current !== navigatorRevision;
+    if (revisionChanged) navigatorRevisionRef.current = navigatorRevision;
+    if (!livePromptMessages.length) {
+      if (revisionChanged) {
+        promptScopeRef.current = null;
+        promptContainerRef.current = null;
+        railPositionCacheRef.current.clear();
+        setPromptMessages([]);
+      }
+      return;
+    }
+
+    const conversationScope = `${adapter.id}:${
+      livePromptMessages[0].conversationId ?? location.href
+    }`;
+    const scopeChanged = promptScopeRef.current !== conversationScope;
+    const containerReplaced =
+      Boolean(promptContainerRef.current) &&
+      promptContainerRef.current !== livePromptContainer &&
+      !promptContainerRef.current?.isConnected;
+    if (revisionChanged || scopeChanged || containerReplaced) {
+      promptScopeRef.current = conversationScope;
+      promptContainerRef.current = livePromptContainer;
+      railPositionCacheRef.current.clear();
+      setPromptMessages(livePromptMessages);
+      return;
+    }
+    if (livePromptContainer) promptContainerRef.current = livePromptContainer;
+    setPromptMessages((observed) =>
+      mergeObservedMessageWindows(observed, livePromptMessages),
+    );
+  }, [
+    adapter.id,
+    livePromptContainer,
+    livePromptMessages,
+    navigatorRevision,
+    showPromptNavigator,
+  ]);
+
+  const promptEntryKeys = useMemo(() => {
+    const occurrences = new Map<string, number>();
+    return promptMessages.map((message) => {
+      const signature = messageWindowSignature(message);
+      const occurrence = occurrences.get(signature) ?? 0;
+      occurrences.set(signature, occurrence + 1);
+      return `${signature}:occurrence:${occurrence}`;
+    });
+  }, [promptMessages]);
 
   useEffect(() => {
     let frame = 0;
@@ -861,9 +945,21 @@ export function ConversationPageOverlay({
       let activeDistance = Number.POSITIVE_INFINITY;
       const measuredPoints = promptMessages
         .map((message, promptIndex) => {
-          if (!message.element.isConnected) return null;
+          const promptKey = promptEntryKeys[promptIndex];
+          if (!message.element.isConnected) {
+            const cachedPosition = railPositionCacheRef.current.get(promptKey);
+            return cachedPosition === undefined
+              ? null
+              : {
+                  promptIndex,
+                  topPercent: cachedPosition,
+                  scrollPercent: cachedPosition,
+                  active: false,
+                };
+          }
           const rect = message.element.getBoundingClientRect();
           const measurement = measureMessageRailPosition(message.element, documentHeight);
+          railPositionCacheRef.current.set(promptKey, measurement.topPercent);
           const distance = Math.abs(rect.top + rect.height / 2 - measurement.viewportCenter);
           if (distance < activeDistance) {
             activeDistance = distance;
@@ -872,6 +968,7 @@ export function ConversationPageOverlay({
           return {
             promptIndex,
             topPercent: measurement.topPercent,
+            scrollPercent: measurement.topPercent,
             active: false,
           };
         })
@@ -964,7 +1061,7 @@ export function ConversationPageOverlay({
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener('resize', schedule);
     };
-  }, [highlights, pins, promptMessages]);
+  }, [highlights, pins, promptEntryKeys, promptMessages]);
 
   useEffect(() => {
     if (!pinMode || !onPinTarget) return;
@@ -1023,6 +1120,40 @@ export function ConversationPageOverlay({
     if (pinNotice?.pinId === id) setPinNotice(null);
   };
 
+  const jumpToPrompt = async (message: PlatformMessage, promptIndex: number) => {
+    const scrollBehavior = messageNavigatorScrollBehavior(adapter.id);
+    if (message.element.isConnected) {
+      await adapter.scrollToMessage(message, scrollBehavior);
+      return;
+    }
+    const point = layout.railPoints.find((entry) => entry.promptIndex === promptIndex);
+    const connectedReference = promptMessages.find((candidate) => candidate.element.isConnected);
+    if (!point || !connectedReference) return;
+    if (
+      !scrollToMessageRailPosition(
+        connectedReference.element,
+        point.scrollPercent,
+        scrollBehavior,
+      )
+    ) {
+      return;
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+    const signature = messageWindowSignature(message);
+    const occurrence = promptMessages
+      .slice(0, promptIndex)
+      .filter((candidate) => messageWindowSignature(candidate) === signature).length;
+    const refreshedMatches = (await adapter.getMessages()).filter(
+      (candidate) =>
+        candidate.role === 'user' && messageWindowSignature(candidate) === signature,
+    );
+    const refreshed = refreshedMatches[occurrence] ?? refreshedMatches[0];
+    if (refreshed?.element.isConnected) {
+      await adapter.scrollToMessage(refreshed, scrollBehavior);
+    }
+  };
+
   const noticeMessage = pinNotice
     ? t(
         pinNotice.result === 'added'
@@ -1079,7 +1210,7 @@ export function ConversationPageOverlay({
           </button>
         </div>
       ) : null}
-      {promptMessages.length && layout.railPoints.length ? (
+      {showPromptNavigator && promptMessages.length && layout.railPoints.length ? (
         <nav className="maw-prompt-navigator" aria-label={t('messageNavigator')}>
           <div className="maw-prompt-card">
             <div className="maw-prompt-card-heading">
@@ -1095,9 +1226,9 @@ export function ConversationPageOverlay({
                     className={point?.active ? 'active' : ''}
                     type="button"
                     aria-current={point?.active ? 'location' : undefined}
-                    key={`${message.runtimeMessageId}:${promptIndex}`}
+                    key={promptEntryKeys[promptIndex]}
                     title={t('jumpToMessage', { number: promptIndex + 1 })}
-                    onClick={() => void adapter.scrollToMessage(message, 'smooth')}
+                    onClick={() => void jumpToPrompt(message, promptIndex)}
                   >
                     <span>{promptIndex + 1}</span>
                     <p>{preview}</p>
@@ -1115,10 +1246,10 @@ export function ConversationPageOverlay({
                 <button
                   className={`maw-message-jump user ${point.active ? 'active' : ''}`}
                   type="button"
-                  key={`${message.runtimeMessageId}:${point.promptIndex}`}
+                  key={promptEntryKeys[point.promptIndex]}
                   style={{ top: `${point.topPercent}%` }}
                   title={t('jumpToMessage', { number: point.promptIndex + 1 })}
-                  onClick={() => void adapter.scrollToMessage(message, 'smooth')}
+                  onClick={() => void jumpToPrompt(message, point.promptIndex)}
                 />
               );
             })}

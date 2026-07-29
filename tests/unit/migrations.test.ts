@@ -9,7 +9,7 @@ import {
 } from '../../src/shared/migrations/migrations';
 import { DEFAULT_SETTINGS, ExtensionLocalStorage } from '../../src/shared/storage/localStorage';
 import { WorkspaceDatabase } from '../../src/shared/storage/indexedDb';
-import type { TimelineMetadataRecord } from '../../src/shared/types/records';
+import type { PromptRecord, TimelineMetadataRecord } from '../../src/shared/types/records';
 import { MemoryStorage } from './localStorage.test';
 
 const database = new WorkspaceDatabase();
@@ -29,10 +29,10 @@ describe('MigrationManager', () => {
     const first = await manager.run();
     const second = await manager.run();
 
-    expect(first).toHaveLength(11);
+    expect(first).toHaveLength(14);
     expect(first.every((result) => result.status === 'success')).toBe(true);
     expect(second).toEqual(first);
-    expect(memory.values[STORAGE_KEYS.schemaVersion]).toBe(11);
+    expect(memory.values[STORAGE_KEYS.schemaVersion]).toBe(14);
     expect(memory.values[STORAGE_KEYS.migrationBackup]).toMatchObject({
       sourceVersion: 0,
       localStorage: { legacy: { preserved: true } },
@@ -77,7 +77,7 @@ describe('MigrationManager', () => {
 
     const results = await new MigrationManager(new ExtensionLocalStorage(memory), database).run();
 
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(9);
     expect(results).toEqual([
       expect.objectContaining({ version: 6, status: 'success' }),
       expect.objectContaining({ version: 7, status: 'success' }),
@@ -85,8 +85,11 @@ describe('MigrationManager', () => {
       expect.objectContaining({ version: 9, status: 'success' }),
       expect.objectContaining({ version: 10, status: 'success' }),
       expect.objectContaining({ version: 11, status: 'success' }),
+      expect.objectContaining({ version: 12, status: 'success' }),
+      expect.objectContaining({ version: 13, status: 'success' }),
+      expect.objectContaining({ version: 14, status: 'success' }),
     ]);
-    expect(memory.values[STORAGE_KEYS.schemaVersion]).toBe(11);
+    expect(memory.values[STORAGE_KEYS.schemaVersion]).toBe(14);
     expect(memory.values[STORAGE_KEYS.settings]).not.toHaveProperty('features.conversationIndex');
   });
 
@@ -110,8 +113,11 @@ describe('MigrationManager', () => {
       expect.objectContaining({ version: 9, status: 'success' }),
       expect.objectContaining({ version: 10, status: 'success' }),
       expect.objectContaining({ version: 11, status: 'success' }),
+      expect.objectContaining({ version: 12, status: 'success' }),
+      expect.objectContaining({ version: 13, status: 'success' }),
+      expect.objectContaining({ version: 14, status: 'success' }),
     ]);
-    expect(memory.values[STORAGE_KEYS.schemaVersion]).toBe(11);
+    expect(memory.values[STORAGE_KEYS.schemaVersion]).toBe(14);
     expect(memory.values[STORAGE_KEYS.settings]).not.toHaveProperty('privacy.cloudSyncEnabled');
     expect(memory.values[STORAGE_KEYS.settings]).not.toHaveProperty('lastSyncAt');
     expect(memory.values).not.toHaveProperty('multiAiWorkspace.lastSyncMetadata');
@@ -142,11 +148,40 @@ describe('MigrationManager', () => {
       expect.objectContaining({ version: 9, status: 'success' }),
       expect.objectContaining({ version: 10, status: 'success' }),
       expect.objectContaining({ version: 11, status: 'success' }),
+      expect.objectContaining({ version: 12, status: 'success' }),
+      expect.objectContaining({ version: 13, status: 'success' }),
+      expect.objectContaining({ version: 14, status: 'success' }),
     ]);
-    expect(memory.values[STORAGE_KEYS.schemaVersion]).toBe(11);
+    expect(memory.values[STORAGE_KEYS.schemaVersion]).toBe(14);
     const [migratedRecord] = await database.getAll('timelineMetadata');
     expect(migratedRecord).not.toHaveProperty('starred');
     expect(migratedRecord).toMatchObject({ note: null, hierarchyLevel: 0, collapsed: false });
+  });
+
+  it('removes the retired favorite field from legacy prompt records', async () => {
+    const memory = new MemoryStorage();
+    memory.values[STORAGE_KEYS.schemaVersion] = 13;
+    await database.put('prompts', {
+      id: 'legacy-prompt',
+      title: 'Legacy prompt',
+      content: 'Legacy content',
+      description: '',
+      tags: [],
+      folderId: null,
+      scope: 'global',
+      platformId: null,
+      accountScopeId: null,
+      usageCount: 0,
+      favorite: true,
+      createdAt: 1,
+      updatedAt: 1,
+    } as PromptRecord);
+
+    const results = await new MigrationManager(new ExtensionLocalStorage(memory), database).run();
+
+    expect(results).toEqual([expect.objectContaining({ version: 14, status: 'success' })]);
+    expect(memory.values[STORAGE_KEYS.schemaVersion]).toBe(14);
+    await expect(database.get('prompts', 'legacy-prompt')).resolves.not.toHaveProperty('favorite');
   });
 
   it('removes retired custom websites without deleting built-in platform bindings', async () => {
@@ -180,7 +215,12 @@ describe('MigrationManager', () => {
 
     const results = await new MigrationManager(new ExtensionLocalStorage(memory), database).run();
 
-    expect(results).toEqual([expect.objectContaining({ version: 11, status: 'success' })]);
+    expect(results).toEqual([
+      expect.objectContaining({ version: 11, status: 'success' }),
+      expect.objectContaining({ version: 12, status: 'success' }),
+      expect.objectContaining({ version: 13, status: 'success' }),
+      expect.objectContaining({ version: 14, status: 'success' }),
+    ]);
     await expect(database.getAll('customSites')).resolves.toEqual([
       expect.objectContaining({ platformId: 'gemini', origin: 'https://gemini.google.com' }),
     ]);

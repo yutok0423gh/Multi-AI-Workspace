@@ -449,11 +449,64 @@ describe('conversation page enhancements', () => {
     fireEvent.click(navigatorQueries.getByText('Second prompt asking for risks'));
     expect(scroll).toHaveBeenCalledWith(messages[2], 'smooth');
 
+    const middle = document.createElement('article');
+    middle.textContent = 'A prompt that appeared after virtualized scrolling';
+    document.body.insertBefore(middle, second);
+    Object.defineProperty(middle, 'getBoundingClientRect', {
+      value: () => ({
+        top: 750,
+        bottom: 850,
+        left: 100,
+        right: 700,
+        width: 600,
+        height: 100,
+        x: 100,
+        y: 750,
+        toJSON: () => ({}),
+      }),
+    });
+    const expandedMessages: PlatformMessage[] = [
+      messages[0],
+      {
+        ...messages[0],
+        runtimeMessageId: 'user:middle',
+        plainText: middle.textContent,
+        element: middle,
+        order: 1,
+      },
+      { ...messages[2], order: 2 },
+    ];
     view.rerender(
       <I18nProvider locale="en">
         <ConversationPageOverlay
           adapter={adapter}
-          messages={messages}
+          messages={expandedMessages}
+          highlights={[]}
+        />
+      </I18nProvider>,
+    );
+    await waitFor(() =>
+      expect(
+        within(
+          screen.getByRole('navigation', {
+            name: 'Conversation message navigator',
+          }),
+        ).getByText('A prompt that appeared after virtualized scrolling'),
+      ).toBeVisible(),
+    );
+    expect(
+      within(
+        screen.getByRole('navigation', {
+          name: 'Conversation message navigator',
+        }),
+      ).getByText('First prompt about a research plan'),
+    ).toBeVisible();
+
+    view.rerender(
+      <I18nProvider locale="en">
+        <ConversationPageOverlay
+          adapter={adapter}
+          messages={expandedMessages}
           highlights={[]}
           showPromptNavigator={false}
         />
@@ -462,6 +515,46 @@ describe('conversation page enhancements', () => {
     expect(
       screen.queryByRole('navigation', { name: 'Conversation message navigator' }),
     ).not.toBeInTheDocument();
+    adapter.dispose();
+  });
+
+  it('uses an interrupt-safe instant timeline jump on Kimi', async () => {
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    const adapter = new UserBoundPlatformAdapter('kimi', 'www.kimi.com');
+    const element = document.createElement('article');
+    element.textContent = 'Kimi prompt';
+    document.body.append(element);
+    const message: PlatformMessage = {
+      platform: 'kimi',
+      conversationId: 'conversation',
+      messageId: null,
+      runtimeMessageId: 'user:0',
+      role: 'user',
+      plainText: element.textContent,
+      html: null,
+      timestamp: null,
+      timestampSource: 'unknown',
+      element,
+      order: 0,
+    };
+    const scroll = vi.spyOn(adapter, 'scrollToMessage').mockResolvedValue();
+
+    render(
+      <I18nProvider locale="en">
+        <ConversationPageOverlay adapter={adapter} messages={[message]} highlights={[]} />
+      </I18nProvider>,
+    );
+
+    const navigator = await screen.findByRole('navigation', {
+      name: 'Conversation message navigator',
+    });
+    fireEvent.click(within(navigator).getByText('Kimi prompt'));
+
+    expect(scroll).toHaveBeenCalledWith(message, 'instant');
     adapter.dispose();
   });
 

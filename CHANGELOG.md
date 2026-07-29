@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0.0 - 2026-07-29
+
+- Redesigned the popup and full settings workspace in a restrained Nordic visual system with grouped navigation, compact category icons, responsive layouts, clearer live-state feedback, and a new symmetrical MW brand mark across extension assets and injected page controls.
+- Replaced About-page letter monograms with packaged official platform artwork for ChatGPT, Claude, Gemini, DeepSeek, Grok, and Kimi. The About page still derives platform support and timeline availability from the same runtime registries used by the extension.
+- Strengthened automatic page connection with versioned per-platform DOM profiles, verified first-party message patterns, brand-aware composer scoring, and safe fallback discovery. DeepSeek now recognizes its visible textarea and virtualized assistant-message structure without requiring the user to bind every element manually.
+- Made Prompt navigation resilient to virtualized or temporarily unmounted messages by merging observed message windows, caching rail positions, refreshing the target after approximate scrolling, and preserving one stable numbered point per user Prompt. Kimi uses instant host-compatible jumps to avoid overlapping smooth-scroll animations.
+- Changed conversation branching to use a verified native branch action before preparing any manual handoff. Platforms without a safe native action receive a clearly labeled context branch that transfers bounded visible context through the existing expiring session-only flow.
+- Improved formula tools so clicking a detected formula immediately copies the configured default format, while a separate compact `fx` control opens a Nordic format chooser for LaTeX, MathML, Word, Notion, or rendered text. The popup now exposes the same canonical default-format setting for quick changes.
+- Refined formula discovery and copy feedback for live KaTeX, MathJax, MathML, explicit TeX annotations, and render-only formulas. Hover affordances, accessible action labels, local approximation boundaries, and clipboard feedback are consistent across supported pages.
+- Removed Prompt-library favorites and their retired stored field while preserving Prompt CRUD, search, tags, import, merge, export, and usage counts. Database migrations normalize older Prompt records without deleting their content.
+- Simplified documentation and runtime copy around the six built-in supported websites, current permission model, native-first branching, page shortcuts, formula behavior, and the removal of custom website support.
+- Added and expanded unit and browser coverage for platform DOM profiles, DeepSeek auto-connection, virtualized Prompt navigation, Kimi jumps, branching, formula discovery and copy-format UI, migration cleanup, and the redesigned popup and settings workspace.
+
 ## 1.0.15 - 2026-07-29
 
 - Removed the unused `scripting` permission and the retired custom-site dynamic-script cleanup. Current page integration continues to use only the statically declared content scripts and exact built-in host permissions.

@@ -388,3 +388,21 @@ export function formatFormula(
   if (format === 'notion') return ['$$', target.latex, '$$'].join('');
   return target.latex;
 }
+
+export interface ResolvedFormulaCopy {
+  value: string | null;
+  approximate: boolean;
+}
+
+export function resolveFormulaCopy(
+  target: FormulaSources,
+  format: AppSettings['markup']['formulaCopyFormat'],
+): ResolvedFormulaCopy {
+  const exact = formatFormula(target, format);
+  if (exact) return { value: exact, approximate: false };
+  if (format === 'mathml') return { value: null, approximate: false };
+  return {
+    value: formatApproximateFormula(target.renderedText, format),
+    approximate: true,
+  };
+}

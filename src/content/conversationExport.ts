@@ -1,8 +1,6 @@
 import type { UserBoundPlatformAdapter } from '../platforms/base/UserBoundPlatformAdapter';
 import type { PlatformMessage } from '../shared/types/platform';
-import type { ExportHistoryRecord } from '../shared/types/records';
 import type { ConversationExportFormat } from '../shared/types/settings';
-import { putRecord } from './database';
 
 export type { ConversationExportFormat } from '../shared/types/settings';
 
@@ -288,7 +286,6 @@ export async function exportConversationMessages(
   filenameSuffix = '',
 ): Promise<void> {
   const conversation = await adapter.getCurrentConversation();
-  const accountScopeId = await adapter.getCurrentAccountScope();
   const title = conversation.title || `${adapter.id}-conversation`;
   const serialized = serializeConversation(format, title, conversation.url, messages);
   const url = URL.createObjectURL(new Blob([serialized.content], { type: serialized.type }));
@@ -298,13 +295,4 @@ export async function exportConversationMessages(
   anchor.download = `${safeTitle}${filenameSuffix ? `-${filenameSuffix}` : ''}.${serialized.extension}`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
-  const history: ExportHistoryRecord = {
-    id: crypto.randomUUID(),
-    platformId: adapter.id,
-    accountScopeId,
-    conversationId: conversation.conversationId,
-    format,
-    exportedAt: Date.now(),
-  };
-  await putRecord('exportHistory', history);
 }

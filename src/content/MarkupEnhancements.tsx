@@ -10,6 +10,7 @@ import {
   extractFormulaSources,
   formatApproximateFormula,
   formatFormula,
+  resolveFormulaCopy,
   type FormulaTarget,
   type MermaidTarget,
 } from './markupDiscovery';
@@ -20,6 +21,12 @@ import type { MermaidTheme } from './mermaidRenderer';
 type ActiveTarget =
   { kind: 'mermaid'; target: MermaidTarget } | { kind: 'formula'; target: FormulaTarget };
 type OpenDialog = ActiveTarget | null;
+
+interface FormulaFeedback {
+  targetId: string;
+  message: string;
+  status: 'success' | 'error';
+}
 
 interface ControlPosition {
   left: number;
@@ -75,7 +82,9 @@ export function MarkupEnhancements({
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [formulaFeedback, setFormulaFeedback] = useState<FormulaFeedback | null>(null);
   const hideTimer = useRef<number | null>(null);
+  const feedbackTimer = useRef<number | null>(null);
   const renderRevision = useRef(0);
   const inlineController = useRef<InlineMermaidController | null>(null);
   const openMermaidRef = useRef<(target: MermaidTarget) => void>(() => undefined);
@@ -95,29 +104,150 @@ export function MarkupEnhancements({
     [cancelHide],
   );
 
+  const writeClipboard = useCallback(async (value: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const copyValue = useCallback(
+    async (value: string | null) => {
+      if (!value) return;
+      if (await writeClipboard(value)) {
+        setNotice(t('copiedToClipboard'));
+        setError('');
+      } else {
+        setError(t('requestFailed'));
+      }
+    },
+    [t, writeClipboard],
+  );
+
+  const showFormulaFeedback = useCallback((feedback: FormulaFeedback) => {
+    if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current);
+    setFormulaFeedback(feedback);
+    feedbackTimer.current = window.setTimeout(() => {
+      setFormulaFeedback((current) => (current?.targetId === feedback.targetId ? null : current));
+      feedbackTimer.current = null;
+    }, 1_600);
+  }, []);
+
+  const copyFormula = useCallback(
+    async (target: FormulaTarget) => {
+      const refreshed = extractFormulaSources(target.element);
+      const currentTarget = {
+        ...target,
+        latex: refreshed.latex ?? target.latex,
+        mathml: refreshed.mathml ?? target.mathml,
+        renderedText: refreshed.renderedText ?? target.renderedText,
+      };
+      setActiveTarget({ kind: 'formula', target: currentTarget });
+      const resolved = resolveFormulaCopy(currentTarget, settings.formulaCopyFormat);
+      if (!resolved.value) {
+        showFormulaFeedback({
+          targetId: target.id,
+          message: t('formulaFormatUnavailable'),
+          status: 'error',
+        });
+        return;
+      }
+      const copied = await writeClipboard(resolved.value);
+      showFormulaFeedback({
+        targetId: target.id,
+        message: copied
+          ? t(resolved.approximate ? 'copiedApproximateFormula' : 'copiedToClipboard')
+          : t('requestFailed'),
+        status: copied ? 'success' : 'error',
+      });
+    },
+    [settings.formulaCopyFormat, showFormulaFeedback, t, writeClipboard],
+  );
+
+  useEffect(
+    () => () => {
+      if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     const cleanups: Array<() => void> = [];
     for (const entry of [
       ...mermaidTargets.map((target) => ({ kind: 'mermaid' as const, target })),
       ...formulaTargets.map((target) => ({ kind: 'formula' as const, target })),
     ]) {
+      const element = entry.target.element;
+      const previousCursor = element.style.cursor;
+      const previousTitle = element.getAttribute('title');
+      const previousBoxShadow = element.style.boxShadow;
+      const previousBackgroundColor = element.style.backgroundColor;
+      const previousBorderRadius = element.style.borderRadius;
+      const previousOutline = element.style.outline;
+      const previousOutlineOffset = element.style.outlineOffset;
+      const previousTransition = element.style.transition;
+      const restoreFormulaHoverStyle = () => {
+        element.style.boxShadow = previousBoxShadow;
+        element.style.backgroundColor = previousBackgroundColor;
+        element.style.borderRadius = previousBorderRadius;
+        element.style.outline = previousOutline;
+        element.style.outlineOffset = previousOutlineOffset;
+      };
       const enter = () => {
         cancelHide();
         setActiveTarget(entry);
+        if (entry.kind === 'formula') {
+          element.style.boxShadow =
+            '0 0 0 3px rgba(68, 104, 90, 0.14), 0 8px 18px rgba(35, 51, 45, 0.18)';
+          element.style.backgroundColor = 'rgba(235, 246, 240, 0.55)';
+          element.style.borderRadius = '4px';
+          element.style.outline = '1px solid rgba(68, 104, 90, 0.18)';
+          element.style.outlineOffset = '2px';
+        }
       };
-      const leave = () => scheduleHide(entry.target.id);
-      entry.target.element.addEventListener('mouseenter', enter);
-      entry.target.element.addEventListener('mouseleave', leave);
+      const leave = () => {
+        if (entry.kind === 'formula') restoreFormulaHoverStyle();
+        scheduleHide(entry.target.id);
+      };
+      element.addEventListener('mouseenter', enter);
+      element.addEventListener('mouseleave', leave);
+      const copy = () => void copyFormula(entry.target as FormulaTarget);
+      if (entry.kind === 'formula') {
+        element.style.cursor = 'copy';
+        element.style.transition = previousTransition
+          ? `${previousTransition}, box-shadow 140ms ease, background-color 140ms ease`
+          : 'box-shadow 140ms ease, background-color 140ms ease';
+        element.title = t(FORMULA_LABELS[settings.formulaCopyFormat]);
+        element.addEventListener('click', copy);
+      }
       cleanups.push(() => {
-        entry.target.element.removeEventListener('mouseenter', enter);
-        entry.target.element.removeEventListener('mouseleave', leave);
+        element.removeEventListener('mouseenter', enter);
+        element.removeEventListener('mouseleave', leave);
+        if (entry.kind === 'formula') {
+          element.removeEventListener('click', copy);
+          restoreFormulaHoverStyle();
+          element.style.cursor = previousCursor;
+          element.style.transition = previousTransition;
+          if (previousTitle === null) element.removeAttribute('title');
+          else element.title = previousTitle;
+        }
       });
     }
     return () => {
       cancelHide();
       for (const cleanup of cleanups) cleanup();
     };
-  }, [cancelHide, formulaTargets, mermaidTargets, scheduleHide]);
+  }, [
+    cancelHide,
+    copyFormula,
+    formulaTargets,
+    mermaidTargets,
+    scheduleHide,
+    settings.formulaCopyFormat,
+    t,
+  ]);
 
   useEffect(() => {
     if (!activeTarget) return;
@@ -246,17 +376,6 @@ export function MarkupEnhancements({
     setNotice('');
   };
 
-  const copyValue = async (value: string | null) => {
-    if (!value) return;
-    try {
-      await navigator.clipboard.writeText(value);
-      setNotice(t('copiedToClipboard'));
-      setError('');
-    } catch {
-      setError(t('requestFailed'));
-    }
-  };
-
   const exportSvg = () => {
     if (!renderedDiagram) return;
     downloadBlob(
@@ -301,14 +420,25 @@ export function MarkupEnhancements({
           aria-label={t(activeTarget.kind === 'mermaid' ? 'mermaidOpen' : 'formulaOpen')}
           onMouseEnter={cancelHide}
           onMouseLeave={() => scheduleHide(activeTarget.target.id)}
-          onClick={() =>
-            activeTarget.kind === 'mermaid'
-              ? openMermaid(activeTarget.target)
-              : openFormula(activeTarget.target)
-          }
+          onClick={(event) => {
+            event.stopPropagation();
+            if (activeTarget.kind === 'mermaid') openMermaid(activeTarget.target);
+            else openFormula(activeTarget.target);
+          }}
         >
           {activeTarget.kind === 'mermaid' ? '◇' : 'ƒx'}
         </button>
+      ) : null}
+      {activeTarget?.kind === 'formula' &&
+      position &&
+      formulaFeedback?.targetId === activeTarget.target.id ? (
+        <div
+          className={`maw-formula-copy-feedback ${formulaFeedback.status}`}
+          style={{ left: Math.max(8, position.left - 172), top: position.top + 34 }}
+          role="status"
+        >
+          {formulaFeedback.message}
+        </div>
       ) : null}
       {dialog ? (
         <div
@@ -317,7 +447,7 @@ export function MarkupEnhancements({
           onMouseDown={() => setDialog(null)}
         >
           <section
-            className="maw-markup-dialog"
+            className={`maw-markup-dialog ${dialog.kind}`}
             role="dialog"
             aria-modal="true"
             aria-label={t(dialog.kind === 'mermaid' ? 'mermaidTitle' : 'formulaTitle')}
@@ -399,25 +529,34 @@ export function MarkupEnhancements({
                   </div>
                 ) : null}
                 <div className="maw-formula-actions">
+                  <p>{t('formulaChooseFormat')}</p>
                   {!dialog.target.latex && !dialog.target.mathml ? (
                     <>
                       <button
                         type="button"
+                        aria-label={t('copyCompatibleFormula')}
+                        data-format="rendered"
+                        data-symbol="Aa"
                         disabled={!dialog.target.renderedText}
                         onClick={() => void copyValue(dialog.target.renderedText)}
                       >
-                        {t('copyCompatibleFormula')}
+                        <span>{t('copyCompatibleFormula')}</span>
+                        <span className="maw-copy-glyph" aria-hidden="true" />
                       </button>
                       {formatApproximateFormula(dialog.target.renderedText, 'latex') ? (
                         <button
                           type="button"
+                          aria-label={t('copyApproximateLatex')}
+                          data-format="latex"
+                          data-symbol="TeX"
                           onClick={() =>
                             void copyValue(
                               formatApproximateFormula(dialog.target.renderedText, 'latex'),
                             )
                           }
                         >
-                          {t('copyApproximateLatex')}
+                          <span>{t('copyApproximateLatex')}</span>
+                          <span className="maw-copy-glyph" aria-hidden="true" />
                         </button>
                       ) : null}
                     </>
@@ -426,17 +565,40 @@ export function MarkupEnhancements({
                       {orderedFormulaFormats.map((format) => {
                         const value = formatFormula(dialog.target, format);
                         return value ? (
-                          <button type="button" key={format} onClick={() => void copyValue(value)}>
-                            {t(FORMULA_LABELS[format])}
+                          <button
+                            type="button"
+                            key={format}
+                            aria-label={t(FORMULA_LABELS[format])}
+                            data-format={format}
+                            data-preferred={
+                              format === settings.formulaCopyFormat ? 'true' : undefined
+                            }
+                            data-symbol={
+                              format === 'latex'
+                                ? 'TeX'
+                                : format === 'mathml'
+                                  ? 'XML'
+                                  : format === 'word'
+                                    ? 'W'
+                                    : 'N'
+                            }
+                            onClick={() => void copyValue(value)}
+                          >
+                            <span>{t(FORMULA_LABELS[format])}</span>
+                            <span className="maw-copy-glyph" aria-hidden="true" />
                           </button>
                         ) : null;
                       })}
                       <button
                         type="button"
+                        aria-label={t('copyRenderedText')}
+                        data-format="rendered"
+                        data-symbol="Aa"
                         disabled={!dialog.target.renderedText}
                         onClick={() => void copyValue(dialog.target.renderedText)}
                       >
-                        {t('copyRenderedText')}
+                        <span>{t('copyRenderedText')}</span>
+                        <span className="maw-copy-glyph" aria-hidden="true" />
                       </button>
                     </>
                   )}

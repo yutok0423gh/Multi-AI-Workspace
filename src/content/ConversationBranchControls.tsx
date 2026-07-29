@@ -40,14 +40,16 @@ export async function createConversationBranch(
 ): Promise<'native' | 'manual'> {
   let preparedBranchId = '';
   try {
+    const result = await adapter.forkConversation(message);
+    if (result.method === 'native') return 'native';
+
     const conversation = await adapter.getCurrentConversation();
     const selectedModel = (await adapter.getSelectedModel?.()) || configuredModel;
     const draft = buildConversationBranchDraft(messages, message, conversation, selectedModel);
-    const prefersNative = adapter.getCapabilities().has('conversation.fork.native');
     const preparationResponse = await sendContentRequest({
       type: 'conversationBranch.prepare',
       transfer: draft,
-      preferredMethod: prefersNative ? 'native' : 'manual',
+      preferredMethod: 'manual',
     });
     if (!isConversationBranchPreparation(preparationResponse.value)) {
       throw new Error('BRANCH_PREPARATION_INVALID');
@@ -56,21 +58,18 @@ export async function createConversationBranch(
     preparedBranchId = preparation.branch.id;
     announceBranchGroup(preparation.group);
 
-    const result = await adapter.forkConversation(message);
-    if (result.method === 'manual') {
-      await sendContentRequest({
-        type: 'conversationBranch.open',
-        branchId: preparedBranchId,
-        transfer: draft,
+    await sendContentRequest({
+      type: 'conversationBranch.open',
+      branchId: preparedBranchId,
+      transfer: draft,
+    });
+    if (preparation.branch.parentBranchId) {
+      announceBranchGroup({
+        ...preparation.group,
+        currentBranchId: preparation.branch.parentBranchId,
       });
-      if (preparation.branch.parentBranchId) {
-        announceBranchGroup({
-          ...preparation.group,
-          currentBranchId: preparation.branch.parentBranchId,
-        });
-      }
     }
-    return result.method;
+    return 'manual';
   } catch (error) {
     if (preparedBranchId) {
       await sendContentRequest({
@@ -323,7 +322,7 @@ export function ConversationBranchNavigator({
                     ? t('branchCreating')
                     : branch.method === 'native'
                       ? t('nativeBranch')
-                      : t('simulatedBranch')}
+                      : t('contextBranch')}
               </small>
             </button>
           ))}

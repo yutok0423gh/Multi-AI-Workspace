@@ -1,6 +1,8 @@
+import type { PlatformId } from '../../shared/types/platform';
 import { createElementSelector } from './elementSelector';
+import { getPlatformDomProfile, type PlatformDomProfile } from './platformDomProfiles';
 
-export const AUTOMATIC_BINDING_VERSION = 3;
+export const AUTOMATIC_BINDING_VERSION = 6;
 
 export interface AutomaticMessageDiscovery {
   userMessageSelector: string | null;
@@ -93,7 +95,11 @@ function isEditable(element: HTMLElement): boolean {
   );
 }
 
-function scoreComposer(element: HTMLElement, viewportHeight: number): number {
+function scoreComposer(
+  element: HTMLElement,
+  viewportHeight: number,
+  brandHint: RegExp | null,
+): number {
   if (!isEditable(element) || isHidden(element)) return Number.NEGATIVE_INFINITY;
   const description = descriptor(element);
   if (SEARCH_HINT.test(description)) return Number.NEGATIVE_INFINITY;
@@ -108,6 +114,7 @@ function scoreComposer(element: HTMLElement, viewportHeight: number): number {
   }
   if (element.getAttribute('role') === 'textbox') score += 20;
   if (COMPOSER_HINT.test(description)) score += 55;
+  if (brandHint?.test(description)) score += 18;
   if (/prompt|composer|chat-input|message-input/i.test(element.id)) score += 35;
   if (element.closest('form')) score += 8;
 
@@ -117,14 +124,37 @@ function scoreComposer(element: HTMLElement, viewportHeight: number): number {
   return score;
 }
 
-function findComposer(documentRef: Document): { element: HTMLElement; score: number } | null {
+function findComposer(
+  documentRef: Document,
+  profile: PlatformDomProfile,
+): { element: HTMLElement; score: number; selector?: string } | null {
   const viewportHeight = documentRef.defaultView?.innerHeight ?? 0;
+  for (const selector of profile.verifiedComposerSelectors) {
+    let matches: HTMLElement[];
+    try {
+      matches = [...documentRef.querySelectorAll<HTMLElement>(selector)].filter((element) =>
+        Number.isFinite(scoreComposer(element, viewportHeight, profile.composerBrandHint)),
+      );
+    } catch {
+      continue;
+    }
+    if (matches.length === 1) {
+      return {
+        element: matches[0],
+        score: Math.max(240, scoreComposer(matches[0], viewportHeight, profile.composerBrandHint)),
+        selector,
+      };
+    }
+  }
   const candidates = [
     ...documentRef.querySelectorAll<HTMLElement>(
       'textarea, input[type="text"], input:not([type]), [contenteditable]:not([contenteditable="false"]), [role="textbox"]',
     ),
   ]
-    .map((element) => ({ element, score: scoreComposer(element, viewportHeight) }))
+    .map((element) => ({
+      element,
+      score: scoreComposer(element, viewportHeight, profile.composerBrandHint),
+    }))
     .filter((candidate) => Number.isFinite(candidate.score))
     .sort((a, b) => b.score - a.score);
 
@@ -311,12 +341,44 @@ function findMessageSelector(
   return best ? { selector: best[0], score: best[1] } : null;
 }
 
+function findVerifiedMessageSelector(
+  documentRef: Document,
+  selectors: readonly string[],
+  composer: HTMLElement | null,
+): { selector: string; score: number } | null {
+  for (const selector of selectors) {
+    let matches: HTMLElement[];
+    try {
+      matches = [...documentRef.querySelectorAll<HTMLElement>(selector)];
+    } catch {
+      continue;
+    }
+    if (
+      matches.length > 0 &&
+      matches.length <= 500 &&
+      matches.every((element) => isMessageRegion(element, composer))
+    ) {
+      return { selector, score: 240 + Math.min(matches.length, 10) * 5 };
+    }
+  }
+  return null;
+}
+
 export function discoverAutomaticMessages(
   documentRef: Document = document,
   composer: HTMLElement | null = null,
+  platformId: PlatformId = 'custom',
 ): AutomaticMessageDiscovery | null {
-  const user = findMessageSelector(documentRef, 'user', composer);
-  const assistant = findMessageSelector(documentRef, 'assistant', composer);
+  const profile = getPlatformDomProfile(platformId);
+  const user =
+    findVerifiedMessageSelector(documentRef, profile.verifiedMessageSelectors.user, composer) ??
+    findMessageSelector(documentRef, 'user', composer);
+  const assistant =
+    findVerifiedMessageSelector(
+      documentRef,
+      profile.verifiedMessageSelectors.assistant,
+      composer,
+    ) ?? findMessageSelector(documentRef, 'assistant', composer);
   if (!user && !assistant) return null;
   return {
     userMessageSelector: user?.selector ?? null,
@@ -327,15 +389,17 @@ export function discoverAutomaticMessages(
 
 export function discoverAutomaticBinding(
   documentRef: Document = document,
+  platformId: PlatformId = 'custom',
 ): AutomaticBindingDiscovery | null {
-  const composer = findComposer(documentRef);
+  const profile = getPlatformDomProfile(platformId);
+  const composer = findComposer(documentRef, profile);
   if (!composer) return null;
 
   try {
     const sendButton = findSendButton(composer.element);
-    const messages = discoverAutomaticMessages(documentRef, composer.element);
+    const messages = discoverAutomaticMessages(documentRef, composer.element, platformId);
     return {
-      composerSelector: createElementSelector(composer.element),
+      composerSelector: composer.selector ?? createElementSelector(composer.element),
       sendButtonSelector: sendButton ? createElementSelector(sendButton) : null,
       userMessageSelector: messages?.userMessageSelector ?? null,
       assistantMessageSelector: messages?.assistantMessageSelector ?? null,

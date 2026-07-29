@@ -1,9 +1,24 @@
 import browser from 'webextension-polyfill';
 
+import chatgptIcon from '../assets/platforms/chatgpt.svg';
+import claudeIcon from '../assets/platforms/claude.ico';
+import deepseekIcon from '../assets/platforms/deepseek.ico';
+import geminiIcon from '../assets/platforms/gemini.svg';
+import grokIcon from '../assets/platforms/grok.svg';
+import kimiIcon from '../assets/platforms/kimi.ico';
 import { shouldShowExtensionTimeline } from '../platforms/nativeFeatures';
 import { SUPPORTED_PLATFORMS } from '../shared/constants/platforms';
 import { useI18n } from '../shared/i18n/I18nContext';
 import { BrandIcon } from '../ui/components/BrandIcon';
+
+const PLATFORM_ICONS: Record<(typeof SUPPORTED_PLATFORMS)[number]['id'], string> = {
+  chatgpt: chatgptIcon,
+  claude: claudeIcon,
+  gemini: geminiIcon,
+  deepseek: deepseekIcon,
+  grok: grokIcon,
+  kimi: kimiIcon,
+};
 
 export function AboutPanel({ onOpenCategory }: { onOpenCategory: (category: 'privacy') => void }) {
   const t = useI18n();
@@ -42,8 +57,8 @@ export function AboutPanel({ onOpenCategory }: { onOpenCategory: (category: 'pri
               rel="noreferrer"
               target="_blank"
             >
-              <span className="about-platform-monogram" aria-hidden="true">
-                {platform.label.slice(0, 2).toUpperCase()}
+              <span className="about-platform-icon-frame" aria-hidden="true">
+                <img src={PLATFORM_ICONS[platform.id]} alt="" />
               </span>
               <span className="about-platform-copy">
                 <strong>{platform.label}</strong>

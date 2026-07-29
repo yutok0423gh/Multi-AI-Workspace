@@ -12,7 +12,6 @@ import type {
   ConversationPinRecord,
   CustomSiteBindingRecord,
   DraftRecord,
-  ExportHistoryRecord,
   MetadataRecord,
   PromptFolderRecord,
   PromptRecord,
@@ -30,7 +29,6 @@ export interface StoreRecordMap {
   textHighlights: TextHighlightRecord;
   customSites: CustomSiteBindingRecord;
   apiProfiles: ApiProfileMetadataRecord;
-  exportHistory: ExportHistoryRecord;
   conversationBranches: ConversationBranchRecord;
   metadata: MetadataRecord;
 }
@@ -44,7 +42,6 @@ interface MultiAiWorkspaceDatabase extends DBSchema {
   textHighlights: { key: string; value: TextHighlightRecord };
   customSites: { key: string; value: CustomSiteBindingRecord };
   apiProfiles: { key: string; value: ApiProfileMetadataRecord };
-  exportHistory: { key: string; value: ExportHistoryRecord };
   conversationBranches: { key: string; value: ConversationBranchRecord };
   metadata: { key: string; value: MetadataRecord };
 }

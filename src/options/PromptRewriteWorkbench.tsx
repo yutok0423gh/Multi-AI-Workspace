@@ -85,7 +85,6 @@ export function PromptRewriteWorkbench({
       tags: ['rewrite'],
       folderId: null,
       usageCount: 0,
-      favorite: false,
       createdAt: now,
       updatedAt: now,
     };

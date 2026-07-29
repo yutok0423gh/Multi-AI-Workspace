@@ -289,10 +289,11 @@ export class UserBoundPlatformAdapter implements PlatformAdapter {
   }
 
   private async runAutomaticBinding(): Promise<CustomSiteBindingRecord | null> {
-    const discovery = discoverAutomaticBinding(document);
+    const discovery = discoverAutomaticBinding(document, this.id);
     const current = this.binding;
     const currentComposer = query(current?.composerSelector ?? null);
-    const messageDiscovery = discovery ?? discoverAutomaticMessages(document, currentComposer);
+    const messageDiscovery =
+      discovery ?? discoverAutomaticMessages(document, currentComposer, this.id);
     if (!discovery && !currentComposer && (!current || !messageDiscovery)) return current;
     const composerSelector =
       currentComposer && current

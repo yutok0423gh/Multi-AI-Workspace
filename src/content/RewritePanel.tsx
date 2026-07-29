@@ -118,7 +118,6 @@ export function RewritePanel({
       tags: ['rewrite', adapter.id],
       folderId: null,
       usageCount: 0,
-      favorite: false,
       createdAt: now,
       updatedAt: now,
     };

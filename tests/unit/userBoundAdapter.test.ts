@@ -58,6 +58,74 @@ describe('UserBoundPlatformAdapter', () => {
     adapter.dispose();
   });
 
+  it('replaces a stale DeepSeek binding with its verified composer and message structure', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-virtual-list-item-key="201">
+          <div>DeepSeek question</div>
+        </div>
+        <div data-virtual-list-item-key="202">
+          <div class="ds-assistant-message-main-content">DeepSeek answer</div>
+        </div>
+      </main>
+      <textarea placeholder="Message DeepSeek"></textarea>
+      <textarea aria-label="Feedback" style="display:none"></textarea>
+    `;
+    let storedBinding: CustomSiteBindingRecord | null = {
+      ...binding(),
+      id: 'binding:deepseek:https://chat.deepseek.com',
+      origin: 'https://chat.deepseek.com',
+      platformId: 'deepseek',
+      composerSelector: '#removed-composer',
+      sendButtonSelector: null,
+      messageContainerSelector: null,
+      userMessageSelector: '.removed-user-message',
+      assistantMessageSelector: '.removed-assistant-message',
+      bindingSource: 'automatic',
+      automaticBindingVersion: 5,
+    };
+    vi.spyOn(browser.runtime, 'sendMessage').mockImplementation(async (message) => {
+      const request = message as { type?: string; binding?: CustomSiteBindingRecord };
+      if (request.type === 'binding.get') return { ok: true, binding: storedBinding };
+      if (request.type === 'binding.save') {
+        storedBinding = request.binding ?? null;
+        return { ok: true, binding: storedBinding };
+      }
+      return { ok: true };
+    });
+    const adapter = new UserBoundPlatformAdapter('deepseek', 'chat.deepseek.com');
+
+    await adapter.initialize();
+
+    expect(adapter.getBinding()).toMatchObject({
+      composerSelector: 'textarea[placeholder*="DeepSeek" i]',
+      userMessageSelector:
+        '[data-virtual-list-item-key]:not([data-virtual-list-item-key="-999"]):has(+ [data-virtual-list-item-key] .ds-assistant-message-main-content)',
+      assistantMessageSelector:
+        '[data-virtual-list-item-key]:has(.ds-assistant-message-main-content)',
+      automaticBindingVersion: 6,
+    });
+    expect([...adapter.getCapabilities()]).toEqual(
+      expect.arrayContaining([
+        'composer.write',
+        'messages.read',
+        'quote-reply',
+        'export',
+        'conversation.fork.manual',
+      ]),
+    );
+    expect(
+      (await adapter.getMessages()).map(({ role, plainText }) => [
+        role,
+        plainText.replace(/\s+/g, ' ').trim(),
+      ]),
+    ).toEqual([
+      ['user', 'DeepSeek question'],
+      ['assistant', 'DeepSeek answer'],
+    ]);
+    adapter.dispose();
+  });
+
   it('enables manually bound capabilities and updates a native composer', async () => {
     document.body.innerHTML = `
       <div id="messages">
@@ -293,7 +361,7 @@ describe('UserBoundPlatformAdapter', () => {
     expect(adapter.getBinding()).toMatchObject({
       userMessageSelector: 'user-query',
       assistantMessageSelector: 'model-response',
-      automaticBindingVersion: 3,
+      automaticBindingVersion: 6,
     });
     adapter.dispose();
   });
@@ -335,7 +403,7 @@ describe('UserBoundPlatformAdapter', () => {
       userMessageSelector: 'user-query',
       assistantMessageSelector: 'model-response',
       bindingSource: 'mixed',
-      automaticBindingVersion: 3,
+      automaticBindingVersion: 6,
     });
     expect(adapter.getCapabilities()).toContain('messages.read');
     expect(adapter.getCapabilities()).toContain('timeline');
@@ -501,7 +569,7 @@ describe('UserBoundPlatformAdapter', () => {
     let storedBinding: CustomSiteBindingRecord | null = {
       ...binding(),
       bindingSource: 'automatic',
-      automaticBindingVersion: 3,
+      automaticBindingVersion: 4,
     };
     vi.spyOn(browser.runtime, 'sendMessage').mockImplementation(async (message) => {
       const request = message as { type?: string; binding?: CustomSiteBindingRecord };

@@ -49,11 +49,7 @@ export function PromptLibraryPanel({
 
   const load = () =>
     void listRecords('prompts').then((records) =>
-      setPrompts(
-        records.sort(
-          (a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt,
-        ),
-      ),
+      setPrompts(records.sort((left, right) => right.updatedAt - left.updatedAt)),
     );
   useEffect(load, []);
 
@@ -111,10 +107,7 @@ export function PromptLibraryPanel({
         {visible.map((prompt) => (
           <article key={prompt.id}>
             <div>
-              <strong>
-                {prompt.favorite ? '★ ' : ''}
-                {prompt.title}
-              </strong>
+              <strong>{prompt.title}</strong>
               <span>{prompt.tags.join(' · ')}</span>
             </div>
             <p>{prompt.content}</p>

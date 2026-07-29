@@ -58,7 +58,7 @@ describe('native conversation branching', () => {
     adapter.dispose();
   });
 
-  it('fails closed to a simulated branch when no unique native action is visible', async () => {
+  it('fails closed to a context branch when no unique native action is visible', async () => {
     document.body.innerHTML = `
       <section id="messages"><article class="assistant-message">Answer</article></section>
       <textarea id="composer"></textarea>
@@ -70,7 +70,7 @@ describe('native conversation branching', () => {
     adapter.dispose();
   });
 
-  it('keeps a safe simulated fallback available across all six built-in platforms', async () => {
+  it('keeps a safe context handoff available across all six built-in platforms', async () => {
     for (const platform of SUPPORTED_PLATFORMS) {
       document.body.innerHTML = `
         <section id="messages"><article class="assistant-message">Answer</article></section>

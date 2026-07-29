@@ -2,7 +2,6 @@
 title: Multi-AI Workspace Privacy Policy
 ---
 
-
 English privacy policy
 Multi-AI Workspace Privacy Policy
 
@@ -10,7 +9,7 @@ Last updated: July 23, 2026
 
 1. Information Handled by the Extension
 
-Multi-AI Workspace may process and store extension settings, interface preferences, prompt templates, unsent drafts, conversation URLs and titles, timeline metadata, pin and highlight positions, export history, and user-configured AI provider information on the user’s device.
+Multi-AI Workspace may process and store extension settings, interface preferences, prompt templates, unsent drafts, conversation URLs and titles, timeline metadata, pin and highlight positions, and user-configured AI provider information on the user’s device.
 
 To provide chat enhancement features, the extension reads visible chat composers, prompts, and conversation content on supported AI websites opened by the user.
 
@@ -82,4 +81,3 @@ For questions concerning this Privacy Policy or the extension’s data practices
 
 Email: chenyutian423@gmail.com
 Project website: https://github.com/Yutok2007/Multi-AI-Workspace
-

@@ -22,7 +22,6 @@ export const promptRecordSchema = z
     tags: z.array(z.string()),
     folderId: z.string().nullable(),
     usageCount: z.number().int().nonnegative(),
-    favorite: z.boolean(),
     createdAt: z.number().int().nonnegative(),
     updatedAt: z.number().int().nonnegative(),
   })

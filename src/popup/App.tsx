@@ -18,19 +18,95 @@ import {
 const settingsRepository = new SettingsRepository();
 
 type VisualEffectMode = AppSettings['ui']['visualEffect'];
+type FormulaCopyFormat = AppSettings['markup']['formulaCopyFormat'];
 
 const QUICK_EFFECTS: Array<{
   value: VisualEffectMode;
   label: MessageKey;
-  icon: string;
 }> = [
-  { value: 'off', label: 'visualEffectOff', icon: '⊘' },
-  { value: 'snow', label: 'visualEffectSnow', icon: '❄' },
-  { value: 'sakura', label: 'visualEffectSakura', icon: '✿' },
-  { value: 'rain', label: 'visualEffectRain', icon: '╱╱' },
-  { value: 'mushroom', label: 'visualEffectMushroom', icon: '🍄' },
-  { value: 'dandelion', label: 'visualEffectDandelion', icon: '✺' },
+  { value: 'off', label: 'visualEffectOff' },
+  { value: 'snow', label: 'visualEffectSnow' },
+  { value: 'sakura', label: 'visualEffectSakura' },
+  { value: 'rain', label: 'visualEffectRain' },
+  { value: 'mushroom', label: 'visualEffectMushroom' },
+  { value: 'dandelion', label: 'visualEffectDandelion' },
 ];
+
+const FORMULA_FORMAT_DEFINITION = SETTING_DEFINITIONS.find(
+  (definition) => definition.id === 'formula-copy-format',
+);
+
+const FORMULA_FORMAT_SYMBOLS: Record<FormulaCopyFormat, string> = {
+  latex: 'TeX',
+  mathml: 'XML',
+  word: 'W',
+  notion: 'N',
+};
+
+function isFormulaCopyFormat(value: string): value is FormulaCopyFormat {
+  return value === 'latex' || value === 'mathml' || value === 'word' || value === 'notion';
+}
+
+function QuickEffectIcon({ effect }: { effect: VisualEffectMode }) {
+  const common = {
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    strokeWidth: 1.6,
+  };
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      {effect === 'off' && (
+        <>
+          <circle cx="12" cy="12" r="7.5" {...common} />
+          <path d="M6.7 6.7 17.3 17.3" {...common} />
+        </>
+      )}
+      {effect === 'snow' && (
+        <>
+          <path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9" {...common} />
+          <path d="m9.5 5.2 2.5 2.1 2.5-2.1M9.5 18.8l2.5-2.1 2.5 2.1" {...common} />
+        </>
+      )}
+      {effect === 'sakura' && (
+        <>
+          <path
+            d="M12 11.7c-4-1.2-5.3-4.2-3.5-5.5 1.5-1.1 3.1.2 3.5 2.1.4-1.9 2-3.2 3.5-2.1 1.8 1.3.5 4.3-3.5 5.5Z"
+            {...common}
+          />
+          <path
+            d="M12 12.3c4 1.2 5.3 4.2 3.5 5.5-1.5 1.1-3.1-.2-3.5-2.1-.4 1.9-2 3.2-3.5 2.1-1.8-1.3-.5-4.3 3.5-5.5Z"
+            {...common}
+          />
+          <circle cx="12" cy="12" r="1" fill="currentColor" />
+        </>
+      )}
+      {effect === 'rain' && <path d="m8 4-3 6m8-6-4 8m9-8-4 8m3 2-3 6m-4-4-2 4" {...common} />}
+      {effect === 'mushroom' && (
+        <>
+          <path d="M4.5 11.2a7.5 7.5 0 0 1 15 0Z" {...common} />
+          <path
+            d="M9.5 11.2v4.2c0 2-1.2 3.6-2.7 4.1h10.4c-1.5-.5-2.7-2.1-2.7-4.1v-4.2"
+            {...common}
+          />
+          <path d="M8 8.5h.1m7.8 0h.1M12 6.5h.1" {...common} />
+        </>
+      )}
+      {effect === 'dandelion' && (
+        <>
+          <path d="M9.5 10.5c1.4 3.6.9 7-1.4 10" {...common} />
+          <path
+            d="m9.4 10.5-3-4m3 4 .4-5m-.4 5 3.6-3.2m-3.6 3.2-4.8.4m13.8-5.8 1.2-1.2m-3.7 5.5 1.4.7m1.6-4.5 1.7.1"
+            {...common}
+          />
+          <circle cx="9.4" cy="10.5" r="1.2" fill="currentColor" />
+        </>
+      )}
+    </svg>
+  );
+}
 
 function openOptions(section?: string): Promise<unknown> {
   const suffix = section ? `#${section}` : '';
@@ -183,11 +259,63 @@ function QuickVisualEffects({
             onClick={() => onChange(effect.value)}
           >
             <span className="popup-effect-icon" aria-hidden="true">
-              {effect.icon}
+              <QuickEffectIcon effect={effect.value} />
             </span>
             <span>{t(effect.label)}</span>
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function QuickFormulaFormat({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: FormulaCopyFormat;
+  disabled: boolean;
+  onChange: (format: FormulaCopyFormat) => void;
+}) {
+  const t = useI18n();
+  if (!FORMULA_FORMAT_DEFINITION) return null;
+
+  return (
+    <section className="popup-formula-card" aria-labelledby="popup-formula-format-title">
+      <div className="popup-effects-heading">
+        <div>
+          <p className="eyebrow">{t('popupQuickControl')}</p>
+          <h2 id="popup-formula-format-title">{t(FORMULA_FORMAT_DEFINITION.label)}</h2>
+        </div>
+        <span className="popup-effects-live">{t('popupAppliesImmediately')}</span>
+      </div>
+      <p className="popup-effects-description">{t(FORMULA_FORMAT_DEFINITION.description)}</p>
+      <div
+        className="popup-formula-options"
+        role="radiogroup"
+        aria-label={t(FORMULA_FORMAT_DEFINITION.label)}
+      >
+        {FORMULA_FORMAT_DEFINITION.options?.map((option) => {
+          const format = String(option.value);
+          if (!isFormulaCopyFormat(format)) return null;
+          return (
+            <button
+              key={format}
+              className="popup-formula-option"
+              type="button"
+              role="radio"
+              aria-checked={value === format}
+              disabled={disabled}
+              onClick={() => onChange(format)}
+            >
+              <span className="popup-formula-symbol" aria-hidden="true">
+                {FORMULA_FORMAT_SYMBOLS[format]}
+              </span>
+              <span>{t(option.label)}</span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -203,6 +331,7 @@ function PopupSettings({
   const t = useI18n();
   const [busyId, setBusyId] = useState('');
   const [effectBusy, setEffectBusy] = useState(false);
+  const [formulaFormatBusy, setFormulaFormatBusy] = useState(false);
   const [error, setError] = useState('');
 
   const update = async (definition: SettingDefinition, value: SettingValue) => {
@@ -230,12 +359,30 @@ function PopupSettings({
     }
   };
 
+  const updateFormulaFormat = async (format: FormulaCopyFormat) => {
+    if (format === settings.markup.formulaCopyFormat || !FORMULA_FORMAT_DEFINITION) return;
+    setFormulaFormatBusy(true);
+    try {
+      onChange(await settingsRepository.set(FORMULA_FORMAT_DEFINITION.write(settings, format)));
+      setError('');
+    } catch {
+      setError(t('saveError'));
+    } finally {
+      setFormulaFormatBusy(false);
+    }
+  };
+
   return (
     <div className="popup-settings">
       <QuickVisualEffects
         value={settings.ui.visualEffect}
         disabled={effectBusy}
         onChange={(effect) => void updateVisualEffect(effect)}
+      />
+      <QuickFormulaFormat
+        value={settings.markup.formulaCopyFormat}
+        disabled={formulaFormatBusy}
+        onChange={(format) => void updateFormulaFormat(format)}
       />
       <header className="popup-settings-header">
         <p className="eyebrow">{t('optionsTitle')}</p>

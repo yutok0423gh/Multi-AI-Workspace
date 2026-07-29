@@ -142,6 +142,18 @@ async function installContentChromeApiMock(
           __mawDatabaseRecords: Record<string, Array<Record<string, unknown>>>;
         }
       ).__mawDatabaseRecords = databaseRecords;
+      (globalThis as unknown as { __mawClipboardText: string }).__mawClipboardText = '';
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          async writeText(value: string) {
+            (globalThis as unknown as { __mawClipboardText: string }).__mawClipboardText = value;
+          },
+          async readText() {
+            return (globalThis as unknown as { __mawClipboardText: string }).__mawClipboardText;
+          },
+        },
+      });
       const listeners = new Set<(changes: Record<string, unknown>, area: string) => void>();
       const settings = {
         schemaVersion: 1,
@@ -511,6 +523,24 @@ test('production popup exposes live background effects and settings after privac
       .getByRole('radiogroup', { name: 'Background effects' })
       .getByRole('radio', { name: 'Snow' }),
   ).toHaveAttribute('aria-checked', 'true');
+  const formulaFormat = page.getByRole('radiogroup', { name: 'Preferred formula format' });
+  await expect(formulaFormat).toBeVisible();
+  await expect(formulaFormat.getByRole('radio')).toHaveCount(4);
+  await expect(formulaFormat.getByRole('radio', { name: 'LaTeX source' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await formulaFormat.getByRole('radio', { name: 'Word equation ($...$)' }).click();
+  await expect(formulaFormat.getByRole('radio', { name: 'Word equation ($...$)' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await page.reload();
+  await expect(
+    page
+      .getByRole('radiogroup', { name: 'Preferred formula format' })
+      .getByRole('radio', { name: 'Word equation ($...$)' }),
+  ).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByRole('heading', { name: 'Layout', exact: true })).toBeVisible();
   await expect(page.getByText(/Show a small isolated launcher/i)).toHaveCount(0);
   const launcherSwitch = page.getByRole('switch', { name: 'Page status launcher' });
@@ -592,6 +622,7 @@ test('About lists every built-in website and the installation boundaries', async
   await expect(page.locator('.about-hero svg[data-maw-brand-icon="true"]')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Supported websites' })).toBeVisible();
   await expect(page.locator('.about-platform-card')).toHaveCount(6);
+  await expect(page.locator('.about-platform-icon-frame img')).toHaveCount(6);
   for (const [name, hostname] of [
     ['ChatGPT', 'chatgpt.com'],
     ['Claude', 'claude.ai'],
@@ -654,7 +685,7 @@ test('conversation export settings expose and persist all five formats', async (
   const formats = [
     'Standard Markdown',
     'Simplified Markdown',
-    'Standard JSON',
+    'Normalized JSON',
     'Simplified JSON',
     'HTML (simplified)',
   ];
@@ -1181,7 +1212,6 @@ test('content feature switches remove disabled surfaces while preserving chat su
         tags: ['summary'],
         folderId: null,
         usageCount: 0,
-        favorite: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       },
@@ -1524,14 +1554,58 @@ test('selected text tools highlight, quote, and expose direct prompt navigation'
   await expect(page.getByRole('button', { name: 'Export SVG' })).toBeEnabled();
   await page.getByRole('button', { name: 'Close' }).click();
 
-  await page.locator('#formula-target').hover();
+  const formulaTarget = page.locator('#formula-target');
+  await formulaTarget.hover();
+  await expect(formulaTarget).toHaveCSS('cursor', 'copy');
+  expect(await formulaTarget.evaluate((element) => element.style.boxShadow)).not.toBe('');
+  await formulaTarget.click();
+  await expect(page.locator('.maw-formula-copy-feedback')).toContainText('Copied to clipboard');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (globalThis as unknown as { __mawClipboardText: string }).__mawClipboardText,
+      ),
+    )
+    .toBe('x^2');
+  await expect(page.getByRole('dialog', { name: 'Copy formula' })).toHaveCount(0);
+  await formulaTarget.hover();
   await page.getByRole('button', { name: 'Open formula copy tools' }).click();
-  await expect(page.getByRole('dialog', { name: 'Copy formula' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Copy LaTeX/ })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Copy MathML' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Close' }).click();
+  const formulaDialog = page.getByRole('dialog', { name: 'Copy formula' });
+  await expect(formulaDialog).toBeVisible();
+  await expect(formulaDialog).toHaveClass(/formula/);
+  await expect(formulaDialog.getByText('Choose a format to copy')).toBeVisible();
+  await expect(formulaDialog.locator('.maw-formula-actions > button')).toHaveCount(5);
+  await expect(formulaDialog.locator('[data-preferred="true"]')).toHaveAttribute(
+    'data-format',
+    'latex',
+  );
+  await expect(formulaDialog.getByRole('button', { name: /^Copy LaTeX/ })).toBeEnabled();
+  await expect(formulaDialog.getByRole('button', { name: 'Copy MathML' })).toBeEnabled();
+  await formulaDialog.getByRole('button', { name: 'Copy MathML' }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (globalThis as unknown as { __mawClipboardText: string }).__mawClipboardText,
+      ),
+    )
+    .toContain('<math');
+  await formulaDialog.getByRole('button', { name: 'Close' }).click();
 
-  await page.locator('#fallback-formula-target').hover();
+  const fallbackFormulaTarget = page.locator('#fallback-formula-target');
+  await fallbackFormulaTarget.hover();
+  expect(await formulaTarget.evaluate((element) => element.style.boxShadow)).toBe('');
+  await fallbackFormulaTarget.click();
+  await expect(page.locator('.maw-formula-copy-feedback')).toContainText(
+    'approximate local conversion',
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (globalThis as unknown as { __mawClipboardText: string }).__mawClipboardText,
+      ),
+    )
+    .not.toBe('x^2');
+  await fallbackFormulaTarget.hover();
   await page.getByRole('button', { name: 'Open formula copy tools' }).click();
   const fallbackFormulaDialog = page.getByRole('dialog', { name: 'Copy formula' });
   await expect(fallbackFormulaDialog).toBeVisible();
@@ -1546,7 +1620,6 @@ test('selected text tools highlight, quote, and expose direct prompt navigation'
       name: 'Convert and copy LaTeX (review required)',
     }),
   ).toBeEnabled();
-  await expect(fallbackFormulaDialog.locator('button:disabled')).toHaveCount(0);
   await fallbackFormulaDialog.getByRole('button', { name: 'Close' }).click();
 
   const promptMarks = page.locator('.maw-message-jump');
@@ -1562,7 +1635,7 @@ test('selected text tools highlight, quote, and expose direct prompt navigation'
   await expect(promptCards.last()).toContainText('Follow-up question');
 
   await page.getByRole('button', { name: 'Branch from message 2' }).click();
-  await expect(page.getByText(/A new branch chat was opened/)).toBeVisible();
+  await expect(page.getByText(/A context branch opened/)).toBeVisible();
   const branchNavigator = page.getByLabel('Conversation branches');
   await expect(branchNavigator).toBeVisible();
   await expect(branchNavigator).toContainText('Conversation fixture');

@@ -13,7 +13,6 @@ interface PromptForm {
   content: string;
   description: string;
   tags: string;
-  favorite: boolean;
 }
 
 const EMPTY_FORM: PromptForm = {
@@ -21,10 +20,11 @@ const EMPTY_FORM: PromptForm = {
   content: '',
   description: '',
   tags: '',
-  favorite: false,
 };
 
-const currentTimestamp = () => Date.now();
+function sortPrompts(records: PromptRecord[]): PromptRecord[] {
+  return records.sort((left, right) => right.updatedAt - left.updatedAt);
+}
 
 function download(filename: string, content: string): void {
   const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
@@ -45,22 +45,13 @@ export function PromptManager() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = async () => {
-    const records = await database.getAll('prompts');
-    setPrompts(
-      records.sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt),
-    );
+    setPrompts(sortPrompts(await database.getAll('prompts')));
   };
 
   useEffect(() => {
     let active = true;
     void database.getAll('prompts').then((records) => {
-      if (active) {
-        setPrompts(
-          records.sort(
-            (a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt,
-          ),
-        );
-      }
+      if (active) setPrompts(sortPrompts(records));
     });
     return () => {
       active = false;
@@ -103,7 +94,6 @@ export function PromptManager() {
       ],
       folderId: existing?.folderId ?? null,
       usageCount: existing?.usageCount ?? 0,
-      favorite: form.favorite,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -121,22 +111,12 @@ export function PromptManager() {
       content: prompt.content,
       description: prompt.description,
       tags: prompt.tags.join(', '),
-      favorite: prompt.favorite,
     });
 
   const remove = async (id: string) => {
     if (!confirm(t('promptDeleteConfirm'))) return;
     await database.delete('prompts', id);
     if (form.id === id) setForm(EMPTY_FORM);
-    await load();
-  };
-
-  const toggleFavorite = async (prompt: PromptRecord) => {
-    await database.put('prompts', {
-      ...prompt,
-      favorite: !prompt.favorite,
-      updatedAt: currentTimestamp(),
-    });
     await load();
   };
 
@@ -203,14 +183,6 @@ export function PromptManager() {
               onChange={(event) => setForm({ ...form, content: event.target.value })}
             />
           </label>
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={form.favorite}
-              onChange={(event) => setForm({ ...form, favorite: event.target.checked })}
-            />
-            <span>{t('favorite')}</span>
-          </label>
         </div>
         <div className="button-row">
           <button className="button button-primary" type="button" onClick={() => void save()}>
@@ -268,17 +240,7 @@ export function PromptManager() {
       <div className="card-grid">
         {visible.map((prompt) => (
           <article className="setting-card compact-card" key={prompt.id}>
-            <div className="profile-heading">
-              <h2>{prompt.title}</h2>
-              <button
-                className="favorite-button"
-                type="button"
-                aria-label={t('favorite')}
-                onClick={() => void toggleFavorite(prompt)}
-              >
-                {prompt.favorite ? '★' : '☆'}
-              </button>
-            </div>
+            <h2>{prompt.title}</h2>
             {prompt.description ? <p className="muted">{prompt.description}</p> : null}
             <pre className="prompt-preview">{prompt.content}</pre>
             <div className="tag-row">

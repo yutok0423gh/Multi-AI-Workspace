@@ -235,6 +235,7 @@ function ContentPanel({
           onPinTarget={pageEnhancements.pinTarget}
           onRemovePin={pageEnhancements.removePin}
           showPromptNavigator={extensionTimelineEnabled}
+          navigatorRevision={routeRevision}
         />
       ) : null}
       {selectedText.selection ? (

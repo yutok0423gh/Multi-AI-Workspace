@@ -141,6 +141,34 @@ const migrations: readonly Migration[] = [
       }
     },
   },
+  {
+    version: 12,
+    async run() {
+      // Reserved by an unreleased preview.
+    },
+  },
+  {
+    version: 13,
+    async run() {
+      // IndexedDB removes stores retired with the preview.
+    },
+  },
+  {
+    version: 14,
+    async run({ database }) {
+      const prompts = await database.getAll('prompts');
+      await Promise.all(
+        prompts.map(async (prompt) => {
+          if (!('favorite' in prompt)) return;
+          const legacyPrompt = prompt as typeof prompt & { favorite?: unknown };
+          const { favorite, ...currentPrompt } = legacyPrompt;
+          void favorite;
+          await database.put('prompts', currentPrompt);
+        }),
+      );
+      // The IndexedDB upgrade removes the write-only exportHistory store.
+    },
+  },
 ];
 
 export class MigrationManager {

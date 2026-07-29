@@ -291,6 +291,7 @@ describe('conversation branches', () => {
         return { ok: true };
       });
     const adapter = setupAdapter();
+    vi.spyOn(adapter, 'forkConversation').mockResolvedValue({ method: 'manual' });
     const messages = [message('user', 0, 'Question'), message('assistant', 1, 'Answer')];
 
     render(
@@ -313,7 +314,34 @@ describe('conversation branches', () => {
     adapter.dispose();
   });
 
-  it('automatically fills a pending simulated branch exactly once and never sends it', async () => {
+  it('uses a native branch without creating a local context-branch record', async () => {
+    setupDocument();
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    const sendMessage = vi.spyOn(browser.runtime, 'sendMessage');
+    const adapter = setupAdapter();
+    const forkConversation = vi
+      .spyOn(adapter, 'forkConversation')
+      .mockResolvedValue({ method: 'native' });
+    const messages = [message('user', 0, 'Question')];
+
+    render(
+      <I18nProvider locale="en">
+        <ConversationBranchControls adapter={adapter} messages={messages} configuredModel={null} />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Branch from message 1' }));
+    await waitFor(() => expect(forkConversation).toHaveBeenCalledWith(messages[0]));
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(screen.getByText('The platform branch is opening.')).toBeVisible();
+    adapter.dispose();
+  });
+
+  it('automatically fills a pending context branch exactly once and never sends it', async () => {
     setupDocument();
     const adapter = setupAdapter();
     const handoff: ConversationBranchHandoff = {

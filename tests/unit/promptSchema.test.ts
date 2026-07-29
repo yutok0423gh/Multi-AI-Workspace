@@ -10,7 +10,6 @@ const basePrompt = {
   tags: [],
   folderId: null,
   usageCount: 0,
-  favorite: false,
   createdAt: 1,
   updatedAt: 1,
 };
@@ -36,5 +35,17 @@ describe('promptRecordSchema', () => {
         accountScopeId: null,
       }).success,
     ).toBe(false);
+  });
+
+  it('strips the retired favorite field from legacy prompt imports', () => {
+    const parsed = promptRecordSchema.parse({
+      ...basePrompt,
+      favorite: true,
+      scope: 'global',
+      platformId: null,
+      accountScopeId: null,
+    });
+
+    expect(parsed).not.toHaveProperty('favorite');
   });
 });

@@ -120,9 +120,7 @@ describe('conversation timeline', () => {
     expect(screen.getByRole('button', { name: 'Export now' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Export now' }));
     await waitFor(() => expect(downloadedFilename).toBe('Timeline test-timeline-selection.md'));
-    expect(requests).toContainEqual(
-      expect.objectContaining({ type: 'database.put', store: 'exportHistory' }),
-    );
+    expect(requests.some((request) => request.store === 'exportHistory')).toBe(false);
     expect(requests.some((request) => request.store === 'favorites')).toBe(false);
     adapter.dispose();
   });

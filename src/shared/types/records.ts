@@ -1,5 +1,4 @@
 import type { PlatformId } from './platform';
-import type { ConversationExportFormat } from './settings';
 import type { ConversationBranchRecord } from './conversationBranch';
 
 export interface PromptRecord {
@@ -13,7 +12,6 @@ export interface PromptRecord {
   tags: string[];
   folderId: string | null;
   usageCount: number;
-  favorite: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -132,15 +130,6 @@ export interface ApiProfileMetadataRecord {
   updatedAt: number;
 }
 
-export interface ExportHistoryRecord {
-  id: string;
-  platformId: PlatformId;
-  accountScopeId: string;
-  conversationId: string | null;
-  format: ConversationExportFormat | 'markdown' | 'json' | 'html' | 'raw';
-  exportedAt: number;
-}
-
 export interface MetadataRecord {
   id: string;
   value: unknown;
@@ -156,6 +145,5 @@ export type DatabaseRecord =
   | TextHighlightRecord
   | CustomSiteBindingRecord
   | ApiProfileMetadataRecord
-  | ExportHistoryRecord
   | ConversationBranchRecord
   | MetadataRecord;

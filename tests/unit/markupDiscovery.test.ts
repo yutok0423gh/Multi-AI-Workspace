@@ -7,6 +7,7 @@ import {
   extractFormulaSources,
   formatApproximateFormula,
   formatFormula,
+  resolveFormulaCopy,
 } from '../../src/content/markupDiscovery';
 import type { PlatformMessage } from '../../src/shared/types/platform';
 
@@ -128,5 +129,23 @@ describe('markup discovery', () => {
     expect(formatFormula(source, 'word')).toBe('$x^2$');
     expect(formatFormula(source, 'notion')).toBe('$$x^2$$');
     expect(formatFormula(source, 'mathml')).toBe('<math><msup/></math>');
+  });
+
+  it('resolves one-click formula copies from the configured format', () => {
+    const exact = { latex: 'x^2', mathml: '<math><msup/></math>', renderedText: 'x²' };
+    expect(resolveFormulaCopy(exact, 'word')).toEqual({
+      value: '$x^2$',
+      approximate: false,
+    });
+    expect(resolveFormulaCopy({ latex: null, mathml: null, renderedText: 'x²' }, 'latex')).toEqual({
+      value: 'x^{2}',
+      approximate: true,
+    });
+    expect(
+      resolveFormulaCopy({ latex: 'x^2', mathml: null, renderedText: 'x²' }, 'mathml'),
+    ).toEqual({
+      value: null,
+      approximate: false,
+    });
   });
 });

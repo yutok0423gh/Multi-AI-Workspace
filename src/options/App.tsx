@@ -19,7 +19,9 @@ import { DefaultModelSettings } from './DefaultModelSettings';
 import { PromptManager } from './PromptManager';
 import { PromptRewriteWorkbench } from './PromptRewriteWorkbench';
 import { ProviderSettings } from './ProviderSettings';
+import { SettingsIcon } from './SettingsIcon';
 import { sendRuntimeRequest } from './runtime';
+import type { MessageKey } from '../shared/i18n/messages';
 import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
@@ -31,6 +33,28 @@ import {
 } from './settingDefinitions';
 
 const settingsRepository = new SettingsRepository();
+
+const CATEGORY_GROUPS: readonly {
+  label: MessageKey;
+  categories: readonly SettingCategory[];
+}[] = [
+  {
+    label: 'settingsGroupWorkspace',
+    categories: ['prompt-rewrite', 'prompt-manager', 'input'],
+  },
+  {
+    label: 'settingsGroupConversation',
+    categories: ['timeline', 'markdown', 'export'],
+  },
+  {
+    label: 'settingsGroupAppearance',
+    categories: ['layout', 'font', 'experimental'],
+  },
+  {
+    label: 'settingsGroupSystem',
+    categories: ['notifications', 'privacy', 'data-management', 'diagnostics', 'about'],
+  },
+];
 
 function isCategory(value: string): value is SettingCategory {
   return CATEGORY_ORDER.includes(value as SettingCategory);
@@ -362,27 +386,43 @@ function OptionsContent({
   return (
     <div className="options-layout">
       <aside className="options-sidebar">
-        <div className="sidebar-brand">
-          <BrandIcon className="brand-mark" />
-          <strong>{t('productName')}</strong>
+        <div className="sidebar-masthead">
+          <div className="sidebar-brand">
+            <BrandIcon className="brand-mark" />
+            <span>
+              <strong>{t('productName')}</strong>
+              <small>{t('settingsControlDeck')}</small>
+            </span>
+          </div>
+          <LanguageToggle
+            locale={settings.locale}
+            onChange={(locale) => save({ ...settings, locale })}
+          />
         </div>
-        <LanguageToggle
-          locale={settings.locale}
-          onChange={(locale) => save({ ...settings, locale })}
-        />
         <nav className="category-nav" aria-label={t('optionsTitle')}>
-          {VISIBLE_CATEGORY_ORDER.map((entry) => (
-            <button
-              className="category-button"
-              type="button"
-              key={entry}
-              aria-current={category === entry ? 'page' : undefined}
-              onClick={() => selectCategory(entry)}
-            >
-              {t(CATEGORY_LABELS[entry])}
-            </button>
+          {CATEGORY_GROUPS.map((group) => (
+            <section className="category-group" key={group.label} aria-label={t(group.label)}>
+              <p>{t(group.label)}</p>
+              {group.categories.map((entry) => (
+                <button
+                  className="category-button"
+                  type="button"
+                  key={entry}
+                  aria-current={category === entry ? 'page' : undefined}
+                  onClick={() => selectCategory(entry)}
+                >
+                  <SettingsIcon category={entry} />
+                  <span>{t(CATEGORY_LABELS[entry])}</span>
+                  <span className="category-signal" aria-hidden="true" />
+                </button>
+              ))}
+            </section>
           ))}
         </nav>
+        <div className="sidebar-footer">
+          <span>{t('settingsLocalFirst')}</span>
+          <strong>{t('version', { version: browser.runtime.getManifest().version })}</strong>
+        </div>
       </aside>
       <main className="options-main">
         <div className="options-toolbar">
@@ -403,9 +443,15 @@ function OptionsContent({
           />
         </div>
         <header className="options-header">
-          <p className="eyebrow">{t('optionsTitle')}</p>
-          <h1>{t(CATEGORY_LABELS[category])}</h1>
-          <p className="muted">{t('optionsSubtitle')}</p>
+          <div className="options-header-icon">
+            <SettingsIcon category={category} />
+          </div>
+          <div>
+            <p className="eyebrow">{t('optionsTitle')}</p>
+            <h1>{t(CATEGORY_LABELS[category])}</h1>
+            <p className="muted">{t('optionsSubtitle')}</p>
+          </div>
+          <span className="options-live-badge">{t('settingsChangesLive')}</span>
         </header>
         {error ? (
           <div className="notice notice-error" role="alert">

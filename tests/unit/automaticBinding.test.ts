@@ -4,6 +4,7 @@ import {
   discoverAutomaticBinding,
   discoverAutomaticMessages,
 } from '../../src/platforms/base/AutomaticBinding';
+import { SUPPORTED_PLATFORMS } from '../../src/shared/constants/platforms';
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -59,6 +60,23 @@ describe('discoverAutomaticBinding', () => {
     expect(discoverAutomaticBinding(document)).toBeNull();
   });
 
+  it.each(SUPPORTED_PLATFORMS)(
+    'uses the $label semantic profile to resolve an otherwise ambiguous composer',
+    (platform) => {
+      document.body.innerHTML = `
+        <textarea id="unrelated" placeholder="Message the AI"></textarea>
+        <textarea id="platform-composer" aria-label="Message ${platform.label}"></textarea>
+      `;
+
+      expect(discoverAutomaticBinding(document, platform.id)).toMatchObject({
+        composerSelector:
+          platform.id === 'deepseek'
+            ? 'textarea[aria-label*="DeepSeek" i]'
+            : '#platform-composer',
+      });
+    },
+  );
+
   it('ignores a search field and low-confidence generic inputs', () => {
     document.body.innerHTML = `
       <textarea id="search" aria-label="Search conversations"></textarea>
@@ -106,6 +124,79 @@ describe('discoverAutomaticBinding', () => {
     expect(discoverAutomaticBinding(document)).toMatchObject({
       userMessageSelector: '.user-query',
       assistantMessageSelector: '.model-response',
+    });
+  });
+
+  it('prefers verified ChatGPT and Gemini message-role selectors when present', () => {
+    document.body.innerHTML = `
+      <aside>
+        <div data-virtual-list-item-key="sidebar-1">First saved chat</div>
+        <div data-virtual-list-item-key="sidebar-2">Second saved chat</div>
+      </aside>
+      <main>
+        <article data-message-author-role="user">ChatGPT question</article>
+        <article data-message-author-role="assistant">ChatGPT answer</article>
+        <user-query>Gemini question</user-query>
+        <model-response>Gemini answer</model-response>
+      </main>
+    `;
+
+    expect(discoverAutomaticMessages(document, null, 'chatgpt')).toMatchObject({
+      userMessageSelector: '[data-message-author-role="user"]',
+      assistantMessageSelector: '[data-message-author-role="assistant"]',
+    });
+    expect(discoverAutomaticMessages(document, null, 'gemini')).toMatchObject({
+      userMessageSelector: 'user-query',
+      assistantMessageSelector: 'model-response',
+    });
+  });
+
+  it('uses the verified DeepSeek composer and virtual message structure', () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-virtual-list-item-key="-999">Welcome card</div>
+        <div data-virtual-list-item-key="101">
+          <div>DeepSeek user prompt</div>
+        </div>
+        <div data-virtual-list-item-key="102">
+          <div class="ds-assistant-message-main-content">DeepSeek assistant answer</div>
+        </div>
+      </main>
+      <textarea name="user query"></textarea>
+      <textarea aria-label="Feedback"></textarea>
+    `;
+
+    const discovery = discoverAutomaticBinding(document, 'deepseek');
+
+    expect(discovery).toMatchObject({
+      composerSelector: 'textarea[name="user query"]',
+      userMessageSelector:
+        '[data-virtual-list-item-key]:not([data-virtual-list-item-key="-999"]):has(+ [data-virtual-list-item-key] .ds-assistant-message-main-content)',
+      assistantMessageSelector:
+        '[data-virtual-list-item-key]:has(.ds-assistant-message-main-content)',
+    });
+    expect(document.querySelectorAll(discovery?.userMessageSelector ?? '')).toHaveLength(1);
+    expect(document.querySelectorAll(discovery?.assistantMessageSelector ?? '')).toHaveLength(1);
+  });
+
+  it('falls back to the visible DeepSeek placeholder when the input name changes', () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-virtual-list-item-key="301">Question</div>
+        <div data-virtual-list-item-key="302">
+          <div class="ds-assistant-message-main-content">Answer</div>
+        </div>
+      </main>
+      <textarea placeholder="Message DeepSeek"></textarea>
+      <textarea aria-label="Feedback" style="display:none"></textarea>
+    `;
+
+    expect(discoverAutomaticBinding(document, 'deepseek')).toMatchObject({
+      composerSelector: 'textarea[placeholder*="DeepSeek" i]',
+      userMessageSelector:
+        '[data-virtual-list-item-key]:not([data-virtual-list-item-key="-999"]):has(+ [data-virtual-list-item-key] .ds-assistant-message-main-content)',
+      assistantMessageSelector:
+        '[data-virtual-list-item-key]:has(.ds-assistant-message-main-content)',
     });
   });
 

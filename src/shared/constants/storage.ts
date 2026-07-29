@@ -1,5 +1,5 @@
 export const DATABASE_NAME = 'multi-ai-workspace';
-export const DATABASE_SCHEMA_VERSION = 11;
+export const DATABASE_SCHEMA_VERSION = 14;
 
 export const DATABASE_STORES = [
   'prompts',
@@ -10,7 +10,6 @@ export const DATABASE_STORES = [
   'textHighlights',
   'customSites',
   'apiProfiles',
-  'exportHistory',
   'conversationBranches',
   'metadata',
 ] as const;
@@ -21,6 +20,9 @@ export const REMOVED_DATABASE_STORES = [
   'conversationIndex',
   'syncQueue',
   'favorites',
+  'exportHistory',
+  'jobWatches',
+  'jobResults',
 ] as const;
 
 export type DatabaseStoreName = (typeof DATABASE_STORES)[number];

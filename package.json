@@ -1,6 +1,6 @@
 {
   "name": "multi-ai-workspace",
-  "version": "1.0.1",
+  "version": "1.0.15",
   "private": true,
   "description": "A privacy-conscious bilingual cross-platform browser workspace for AI chat sites.",
   "type": "module",

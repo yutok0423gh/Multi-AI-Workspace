@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.15 - 2026-07-29
 
+- Removed the unused `scripting` permission and the retired custom-site dynamic-script cleanup. Current page integration continues to use only the statically declared content scripts and exact built-in host permissions.
 - Changed local drafts to safely restore previous input by default only after the bound composer remains empty and the conversation scope is revalidated. The page shortcut menu now exposes mutually exclusive Restore and Undo Restore actions; undo never overwrites edited input and preserves the saved draft for another restore.
 - Added one canonical per-platform default-model setting for new empty chats. The content adapter applies it only on the existing verified new-chat routes, only through a user-bound visible model control, verifies the visible selection, never changes conversations that already contain messages, and keeps the platform default without guessing when the configured model is missing or ambiguous.
 - Reworked answer-completion notifications around explicit generation lifecycle signals instead of assistant-node creation. Standard `aria-busy` or an optional user-bound generation indicator starts a cycle; notification waits for the signal to end and the final readable message to settle, suppresses user-cancelled/alerted cycles, deduplicates by completion ID in both content and background layers, and treats missing OS permission as non-fatal.

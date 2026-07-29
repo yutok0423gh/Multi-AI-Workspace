@@ -176,10 +176,6 @@ describe('MigrationManager', () => {
       platformId: 'gemini',
       origin: 'https://gemini.google.com',
     });
-    vi.spyOn(browser.scripting, 'getRegisteredContentScripts').mockResolvedValue([
-      { id: 'maw-custom-deadbeef' },
-    ] as never);
-    const unregister = vi.spyOn(browser.scripting, 'unregisterContentScripts');
     const removePermission = vi.spyOn(browser.permissions, 'remove');
 
     const results = await new MigrationManager(new ExtensionLocalStorage(memory), database).run();
@@ -188,7 +184,6 @@ describe('MigrationManager', () => {
     await expect(database.getAll('customSites')).resolves.toEqual([
       expect.objectContaining({ platformId: 'gemini', origin: 'https://gemini.google.com' }),
     ]);
-    expect(unregister).toHaveBeenCalledWith({ ids: ['maw-custom-deadbeef'] });
     expect(removePermission).toHaveBeenCalledWith({ origins: ['https://example.com/*'] });
   });
 

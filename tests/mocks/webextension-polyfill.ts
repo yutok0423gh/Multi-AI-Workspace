@@ -78,11 +78,6 @@ const browser = {
     request: async () => true,
     remove: async () => true,
   },
-  scripting: {
-    getRegisteredContentScripts: async () => [],
-    unregisterContentScripts: async () => undefined,
-    registerContentScripts: async () => undefined,
-  },
   notifications: {
     create: async () => 'notification-id',
   },

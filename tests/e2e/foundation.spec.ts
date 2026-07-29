@@ -250,7 +250,7 @@ async function installContentChromeApiMock(
       };
       const runtime = {
         id: 'multi-ai-workspace-test',
-        getManifest: () => ({ version: '1.0.1' }),
+        getManifest: () => ({ version: '1.0.15' }),
         getURL: (path: string) => `http://127.0.0.1:4173/${path}`,
         sendMessage(
           message: {

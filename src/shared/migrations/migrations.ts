@@ -129,14 +129,6 @@ const migrations: readonly Migration[] = [
       ]);
       const retiredSites = bindings.filter((binding) => binding.platformId === 'custom');
 
-      try {
-        const scripts = await browser.scripting.getRegisteredContentScripts();
-        const ids = scripts.map((script) => script.id).filter((id) => id.startsWith('maw-custom-'));
-        if (ids.length) await browser.scripting.unregisterContentScripts({ ids });
-      } catch {
-        // Old custom-site scripts are inert because unknown websites no longer receive an adapter.
-      }
-
       await Promise.all(retiredSites.map((site) => database.delete('customSites', site.id)));
       const providerOrigins = new Set(profiles.map((profile) => profile.baseUrlOrigin));
       const retiredOrigins = [...new Set(retiredSites.map((site) => site.origin))].filter(

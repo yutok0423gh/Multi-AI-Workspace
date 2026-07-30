@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   hasConfirmedNativeFeature,
+  shouldShowExtensionBranch,
   shouldShowExtensionTimeline,
 } from '../../src/platforms/nativeFeatures';
 
@@ -19,6 +20,16 @@ describe('native platform feature policy', () => {
     expect(hasConfirmedNativeFeature('deepseek', 'conversation-branch')).toBe(false);
     expect(hasConfirmedNativeFeature('grok', 'conversation-branch')).toBe(false);
     expect(hasConfirmedNativeFeature('kimi', 'conversation-branch')).toBe(false);
+  });
+
+  it('omits extension-owned branching where the platform already provides it', () => {
+    expect(shouldShowExtensionBranch('chatgpt')).toBe(false);
+    expect(shouldShowExtensionBranch('gemini')).toBe(false);
+    expect(shouldShowExtensionBranch('claude')).toBe(true);
+    expect(shouldShowExtensionBranch('deepseek')).toBe(true);
+    expect(shouldShowExtensionBranch('grok')).toBe(true);
+    expect(shouldShowExtensionBranch('kimi')).toBe(true);
+    expect(shouldShowExtensionBranch('custom')).toBe(true);
   });
 
   it('enables the extension timeline for Claude, Gemini, Kimi, and local fixtures', () => {

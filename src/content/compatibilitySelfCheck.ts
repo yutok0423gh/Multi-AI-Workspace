@@ -1,4 +1,7 @@
-import { shouldShowExtensionTimeline } from '../platforms/nativeFeatures';
+import {
+  shouldShowExtensionBranch,
+  shouldShowExtensionTimeline,
+} from '../platforms/nativeFeatures';
 import type {
   CompatibilityDebugReport,
   CompatibilityFeatureCheck,
@@ -54,8 +57,9 @@ export function createCompatibilityFeatureChecks(
         ? check('timeline', 'available', 'ready')
         : unavailableCheck('timeline', snapshot, 'messages-not-detected');
 
-  const branch =
-    capabilities.has('conversation.fork.native') || capabilities.has('conversation.fork.manual')
+  const branch = !shouldShowExtensionBranch(platformId)
+    ? check('branch', 'native', 'native-platform-feature')
+    : capabilities.has('conversation.fork.manual')
       ? check('branch', 'available', 'ready')
       : unavailableCheck('branch', snapshot, 'messages-not-detected');
 

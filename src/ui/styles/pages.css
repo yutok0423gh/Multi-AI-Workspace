@@ -1366,6 +1366,62 @@ a:focus-visible {
   grid-column: 1 / -1;
 }
 
+.prompt-content-field {
+  display: grid;
+  gap: 7px;
+}
+
+.prompt-content-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.prompt-content-heading label {
+  color: #44514b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.prompt-file-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid var(--nordic-hairline);
+  border-radius: 7px;
+  padding: 0 10px;
+  color: var(--nordic-pine);
+  background: #f4f6f2;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.prompt-file-button:hover,
+.prompt-file-button:focus-visible {
+  border-color: #9faf9f;
+  background: var(--nordic-sage);
+}
+
+.prompt-file-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.prompt-file-help {
+  margin: 0;
+  color: var(--nordic-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .check-label {
   display: flex !important;
   align-items: center;

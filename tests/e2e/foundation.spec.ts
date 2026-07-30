@@ -613,6 +613,32 @@ test('Prompt Manager is editable from full settings and its direct shortcut rout
   );
 });
 
+test('Prompt Manager inserts a local Markdown file without saving automatically', async ({
+  page,
+}) => {
+  await installChromeApiMock(page);
+  const response = await page.goto('http://127.0.0.1:4173/options.html#prompt-manager');
+  expect(response?.status()).toBe(200);
+
+  await page.getByLabel('Title').fill('File-backed prompt');
+  const promptContent = page.getByLabel('Prompt content');
+  await promptContent.fill('Context:\n\nEnd');
+  await promptContent.evaluate((element) => {
+    const textarea = element as HTMLTextAreaElement;
+    textarea.setSelectionRange(10, 10);
+  });
+
+  await page
+    .locator('input[type="file"][accept*=".markdown"]')
+    .setInputFiles('tests/fixtures/prompt-context.md');
+
+  await expect(promptContent).toHaveValue('Context:\n\n# Local notes\n\n- First item\nEnd');
+  await expect(
+    page.getByText('Inserted prompt-context.md. Review the content before saving.'),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'File-backed prompt', level: 2 })).toHaveCount(0);
+});
+
 test('About lists every built-in website and the installation boundaries', async ({ page }) => {
   await installChromeApiMock(page);
   const response = await page.goto('http://127.0.0.1:4173/options.html#about');

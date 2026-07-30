@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.0 - 2026-07-30
+
+- Removed extension-owned conversation branch controls from ChatGPT and Gemini. Their adapters no longer advertise manual or extension-driven native branch capabilities, compatibility self-check reports the verified platform-native feature, and page shortcuts remain free of duplicate branch actions.
+- Kept the bounded, session-only context branch workflow available on Claude, DeepSeek, Grok, and Kimi, where no confirmed platform-native branch feature is recorded.
+- Added local Markdown and plain-text insertion to the full Prompt Manager. Users can insert `.md`, `.markdown`, or `.txt` content at the current caret, replace an active selection, review or edit the result, and save only when ready.
+- Limited inserted Prompt files to 10 MB, rejects unsupported, empty, or unreadable files without changing the editor, removes a leading byte-order mark, and keeps the entire operation local without adding permissions or uploading file contents.
+- Added English, Traditional Chinese, and Simplified Chinese file-insertion labels, guidance, success feedback, and validation errors in the existing Prompt Manager interface.
+- Added Chrome Web Store icon and top-promotion artwork alongside focused unit and browser coverage for file validation, caret insertion, native branch gating, compatibility status, and the no-auto-save workflow.
+
 ## 2.0.0 - 2026-07-29
 
 - Redesigned the popup and full settings workspace in a restrained Nordic visual system with grouped navigation, compact category icons, responsive layouts, clearer live-state feedback, and a new symmetrical MW brand mark across extension assets and injected page controls.

@@ -26,8 +26,7 @@ import {
 } from './AutomaticBinding';
 import { createAnswerCompletionObserver } from './answerCompletion';
 import { selectBoundModel } from './modelSelection';
-import { tryNativeConversationBranch } from './nativeConversationBranch';
-import { hasConfirmedNativeFeature, shouldShowExtensionTimeline } from '../nativeFeatures';
+import { shouldShowExtensionBranch, shouldShowExtensionTimeline } from '../nativeFeatures';
 
 function query(selector: string | null, root: ParentNode = document): HTMLElement | null {
   if (!selector) return null;
@@ -520,10 +519,7 @@ export class UserBoundPlatformAdapter implements PlatformAdapter {
       capabilities.add('conversation.metadata');
       if (shouldShowExtensionTimeline(this.id)) capabilities.add('timeline');
       capabilities.add('export');
-      capabilities.add('conversation.fork.manual');
-      if (hasConfirmedNativeFeature(this.id, 'conversation-branch')) {
-        capabilities.add('conversation.fork.native');
-      }
+      if (shouldShowExtensionBranch(this.id)) capabilities.add('conversation.fork.manual');
     }
     if (query(this.binding?.modelControlSelector ?? null)) {
       capabilities.add('model.select');
@@ -732,6 +728,9 @@ export class UserBoundPlatformAdapter implements PlatformAdapter {
   async forkConversation(
     message: PlatformMessage,
   ): Promise<{ method: 'native' | 'manual'; newUrl?: string }> {
+    if (!shouldShowExtensionBranch(this.id)) {
+      throw new CapabilityUnavailableError('conversation.fork.manual');
+    }
     const messages = await this.getMessages();
     const available = messages.some(
       (candidate) =>
@@ -740,9 +739,6 @@ export class UserBoundPlatformAdapter implements PlatformAdapter {
         candidate.role === message.role,
     );
     if (!available) throw new CapabilityUnavailableError('conversation.fork.manual');
-    if (await tryNativeConversationBranch(this.id, message)) {
-      return { method: 'native' };
-    }
     return { method: 'manual' };
   }
 

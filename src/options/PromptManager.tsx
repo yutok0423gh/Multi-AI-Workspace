@@ -4,6 +4,7 @@ import { useI18n } from '../shared/i18n/I18nContext';
 import { promptRecordSchema } from '../shared/schemas/records';
 import { WorkspaceDatabase } from '../shared/storage/indexedDb';
 import type { PromptRecord } from '../shared/types/records';
+import { insertPromptText, validatePromptTextFile } from './promptTextFile';
 
 const database = new WorkspaceDatabase();
 
@@ -43,6 +44,8 @@ export function PromptManager() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
+  const promptContentFileInput = useRef<HTMLInputElement>(null);
+  const promptContentInput = useRef<HTMLTextAreaElement>(null);
 
   const load = async () => {
     setPrompts(sortPrompts(await database.getAll('prompts')));
@@ -146,6 +149,42 @@ export function PromptManager() {
     }
   };
 
+  const insertPromptFile = async (file: File) => {
+    const validationError = validatePromptTextFile(file);
+    if (validationError) {
+      setNotice('');
+      setError(
+        validationError === 'too-large' ? t('promptFileTooLarge') : t('promptFileUnsupported'),
+      );
+      return;
+    }
+
+    const textarea = promptContentInput.current;
+    const selectionStart = textarea?.selectionStart ?? form.content.length;
+    const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+
+    try {
+      const fileContent = (await file.text()).replace(/^\uFEFF/, '');
+      if (!fileContent) {
+        setNotice('');
+        setError(t('promptFileEmpty'));
+        return;
+      }
+
+      const insertion = insertPromptText(form.content, fileContent, selectionStart, selectionEnd);
+      setForm((current) => ({ ...current, content: insertion.content }));
+      setError('');
+      setNotice(t('promptFileInserted', { name: file.name }));
+      requestAnimationFrame(() => {
+        promptContentInput.current?.focus();
+        promptContentInput.current?.setSelectionRange(insertion.caret, insertion.caret);
+      });
+    } catch {
+      setNotice('');
+      setError(t('promptFileReadFailed'));
+    }
+  };
+
   return (
     <div className="settings-stack">
       {notice ? <div className="notice">{notice}</div> : null}
@@ -175,14 +214,45 @@ export function PromptManager() {
               onChange={(event) => setForm({ ...form, description: event.target.value })}
             />
           </label>
-          <label className="wide-field">
-            <span>{t('promptContent')}</span>
+          <div className="wide-field prompt-content-field">
+            <div className="prompt-content-heading">
+              <label htmlFor="prompt-manager-content">{t('promptContent')}</label>
+              <button
+                className="prompt-file-button"
+                type="button"
+                onClick={() => promptContentFileInput.current?.click()}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M14 3H7.75A2.75 2.75 0 0 0 5 5.75v12.5A2.75 2.75 0 0 0 7.75 21h8.5A2.75 2.75 0 0 0 19 18.25V8l-5-5Z" />
+                  <path d="M14 3v5h5M9 13h6M9 17h4" />
+                </svg>
+                {t('promptInsertFile')}
+              </button>
+            </div>
             <textarea
+              id="prompt-manager-content"
+              ref={promptContentInput}
+              aria-describedby="prompt-file-help"
               rows={9}
               value={form.content}
               onChange={(event) => setForm({ ...form, content: event.target.value })}
             />
-          </label>
+            <p className="prompt-file-help" id="prompt-file-help">
+              {t('promptInsertFileHelp')}
+            </p>
+            <input
+              ref={promptContentFileInput}
+              hidden
+              type="file"
+              accept=".md,.markdown,.txt,text/markdown,text/plain"
+              aria-label={t('promptInsertFile')}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void insertPromptFile(file);
+                event.target.value = '';
+              }}
+            />
+          </div>
         </div>
         <div className="button-row">
           <button className="button button-primary" type="button" onClick={() => void save()}>

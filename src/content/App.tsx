@@ -193,17 +193,19 @@ function ContentPanel({
 
   return (
     <div className="maw-shell">
-      <ConversationBranchHandoffBanner
-        adapter={adapter}
-        platformId={platformId}
-        routeRevision={routeRevision}
-      />
       {canBranch ? (
-        <ConversationBranchNavigator
-          adapter={adapter}
-          platformId={platformId}
-          routeRevision={routeRevision}
-        />
+        <>
+          <ConversationBranchHandoffBanner
+            adapter={adapter}
+            platformId={platformId}
+            routeRevision={routeRevision}
+          />
+          <ConversationBranchNavigator
+            adapter={adapter}
+            platformId={platformId}
+            routeRevision={routeRevision}
+          />
+        </>
       ) : null}
       <ChatGptExportButton
         adapter={adapter}

@@ -48,6 +48,10 @@ export function hasConfirmedNativeFeature(
   return NATIVE_PLATFORM_FEATURES[platformId].has(feature);
 }
 
+export function shouldShowExtensionBranch(platformId: PlatformId): boolean {
+  return !hasConfirmedNativeFeature(platformId, 'conversation-branch');
+}
+
 const EXTENSION_TIMELINE_PLATFORMS: ReadonlySet<PlatformId> = new Set([
   'claude',
   'gemini',

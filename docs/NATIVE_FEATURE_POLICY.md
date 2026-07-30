@@ -13,9 +13,9 @@
 
 | 平台         | 官方已确认的相关能力                                            | 扩展处理                                                              |
 | ------------ | --------------------------------------------------------------- | --------------------------------------------------------------------- |
-| ChatGPT      | 历史搜索、Projects、整账号数据导出、原生对话分支                | 不提供扩展时间线；保留可预览/复制的跨平台手动分支和当前对话导出       |
+| ChatGPT      | 历史搜索、Projects、整账号数据导出、原生对话分支                | 不提供扩展时间线或扩展分支；保留当前对话导出                          |
 | Claude       | Projects、过去对话搜索、整账号数据导出                          | 保留扩展时间线、本地元数据索引和当前对话导出                          |
-| Gemini       | 最近/置顶对话、对话搜索、响应导出、Google Takeout、原生对话分支 | 保留扩展时间线、可预览/复制的跨平台手动分支和当前对话导出             |
+| Gemini       | 最近/置顶对话、对话搜索、响应导出、Google Takeout、原生对话分支 | 保留扩展时间线和当前对话导出；不提供扩展分支                          |
 | Grok         | 跨设备同步对话历史                                              | 不提供扩展时间线；保留当前对话导出                                    |
 | Kimi Web     | 对话历史；另有 Kimi Code CLI 会话导出                           | 保留 Web 端扩展时间线和当前对话导出，不把 CLI 功能误算为 Web 原生能力 |
 | DeepSeek Web | 跨平台对话历史同步                                              | 不提供扩展时间线；保留当前对话导出                                    |
@@ -24,7 +24,7 @@
 
 当前浏览器扩展中的 `claude` 平台对应 `claude.ai` 网页，不是 Claude Code CLI；CLI 不在浏览器页面注入范围内。
 
-原生分支的一手依据：[ChatGPT Release Notes](https://help.openai.com/en/articles/6825453-chatgpt-release-notes) 与 [Gemini Apps Help](https://support.google.com/gemini/answer/13666746)。扩展不猜测或点击这些平台的私有菜单选择器，而是提供统一、可预览、不会自动发送的 Manual Fork 流程。
+原生分支的一手依据：[ChatGPT Release Notes](https://help.openai.com/en/articles/6825453-chatgpt-release-notes) 与 [Gemini Apps Help](https://support.google.com/gemini/answer/13666746)。扩展不猜测或点击这些平台的私有菜单选择器，也不在 ChatGPT 或 Gemini 注入分支按钮、导航器、交接提示或快捷入口。
 
 ## DOM 适配边界
 

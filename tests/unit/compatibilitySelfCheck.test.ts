@@ -88,8 +88,8 @@ describe('compatibility self-check', () => {
       ),
     ).toContainEqual({
       feature: 'branch',
-      status: 'recovering',
-      reason: 'automatic-recovery-running',
+      status: 'native',
+      reason: 'native-platform-feature',
     });
   });
 

@@ -1,7 +1,5 @@
-import browser from 'webextension-polyfill';
-
 import { CapabilityUnavailableError } from '../../shared/errors/AppError';
-import type { RuntimeResponse } from '../../shared/types/messages';
+import { sendRuntimeRequest } from '../../shared/runtime/sendRuntimeRequest';
 import type {
   AdapterCompatibilityEvidence,
   CompatibilityMonitorSnapshot,
@@ -131,11 +129,56 @@ function setNativeValue(element: HTMLTextAreaElement | HTMLInputElement, value: 
   setter?.call(element, value);
 }
 
+function selectionInside(element: HTMLElement, selection: Selection | null): boolean {
+  return Boolean(
+    selection?.rangeCount &&
+    selection.anchorNode &&
+    selection.focusNode &&
+    element.contains(selection.anchorNode) &&
+    element.contains(selection.focusNode),
+  );
+}
+
+function prepareRichEditableSelection(
+  element: HTMLElement,
+  mode: 'replace' | 'insert-at-cursor' | 'append',
+): void {
+  const selection = element.ownerDocument.getSelection();
+  if (mode === 'insert-at-cursor' && selectionInside(element, selection)) return;
+  const range = element.ownerDocument.createRange();
+  range.selectNodeContents(element);
+  if (mode !== 'replace') range.collapse(false);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function writeRichEditable(
+  element: HTMLElement,
+  value: string,
+  mode: 'replace' | 'insert-at-cursor' | 'append',
+): boolean {
+  element.focus();
+  prepareRichEditableSelection(element, mode);
+  const documentRef = element.ownerDocument;
+  if (typeof documentRef.execCommand === 'function') {
+    try {
+      if (documentRef.execCommand('insertText', false, value)) return true;
+    } catch {
+      // Some rich editors disable execCommand. The controlled fallback below remains local.
+    }
+  }
+
+  const current = readEditable(element);
+  element.textContent = mode === 'replace' ? value : `${current}${value}`;
+  return false;
+}
+
 function writeEditable(
   element: HTMLElement,
   value: string,
   mode: 'replace' | 'insert-at-cursor' | 'append',
 ): void {
+  let browserHandledInput = false;
   if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
     const current = element.value;
     const start = element.selectionStart ?? current.length;
@@ -151,17 +194,18 @@ function writeEditable(
       mode === 'replace' ? next.length : mode === 'append' ? next.length : start + value.length;
     element.setSelectionRange(cursor, cursor);
   } else {
-    const current = readEditable(element);
-    element.textContent = mode === 'replace' ? value : `${current}${value}`;
+    browserHandledInput = writeRichEditable(element, value, mode);
   }
-  element.dispatchEvent(
-    new InputEvent('input', {
-      bubbles: true,
-      composed: true,
-      data: value,
-      inputType: 'insertText',
-    }),
-  );
+  if (!browserHandledInput) {
+    element.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        composed: true,
+        data: value,
+        inputType: 'insertText',
+      }),
+    );
+  }
   element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
 }
 
@@ -205,12 +249,12 @@ export class UserBoundPlatformAdapter implements PlatformAdapter {
   }
 
   async reloadBinding(): Promise<CustomSiteBindingRecord | null> {
-    const response = (await browser.runtime.sendMessage({
+    const response = await sendRuntimeRequest({
       type: 'binding.get',
       origin: location.origin,
       platformId: this.id,
-    })) as RuntimeResponse;
-    this.binding = response.ok ? (response.binding ?? null) : null;
+    });
+    this.binding = response.binding ?? null;
     return this.binding;
   }
 
@@ -386,11 +430,11 @@ export class UserBoundPlatformAdapter implements PlatformAdapter {
       createdAt: current?.createdAt ?? now,
       updatedAt: now,
     };
-    const response = (await browser.runtime.sendMessage({
+    const response = await sendRuntimeRequest({
       type: 'binding.save',
       binding: next,
-    })) as RuntimeResponse;
-    if (response.ok) this.setBinding(response.binding ?? next);
+    });
+    this.setBinding(response.binding ?? next);
     return this.binding;
   }
 

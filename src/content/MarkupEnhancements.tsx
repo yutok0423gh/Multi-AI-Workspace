@@ -40,6 +40,17 @@ const FORMULA_LABELS: Record<AppSettings['markup']['formulaCopyFormat'], Message
   notion: 'copyNotionFormula',
 };
 
+const FORMULA_FORMAT_NAMES: Record<
+  AppSettings['markup']['formulaCopyFormat'] | 'rendered',
+  MessageKey
+> = {
+  latex: 'formulaFormatLatex',
+  mathml: 'formulaFormatMathml',
+  word: 'formulaFormatWord',
+  notion: 'formulaFormatNotion',
+  rendered: 'formulaFormatRendered',
+};
+
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -158,7 +169,11 @@ export function MarkupEnhancements({
       showFormulaFeedback({
         targetId: target.id,
         message: copied
-          ? t(resolved.approximate ? 'copiedApproximateFormula' : 'copiedToClipboard')
+          ? resolved.usedFallback
+            ? t('copiedFormulaFallback', {
+                format: t(FORMULA_FORMAT_NAMES[resolved.format]),
+              })
+            : t(resolved.approximate ? 'copiedApproximateFormula' : 'copiedToClipboard')
           : t('requestFailed'),
         status: copied ? 'success' : 'error',
       });

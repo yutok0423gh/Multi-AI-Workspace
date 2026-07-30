@@ -10,7 +10,10 @@ import type { DatabaseStoreName } from '../constants/storage';
 import type { ApiProfileMetadataRecord, CustomSiteBindingRecord } from './records';
 import type { PlatformConversation, PlatformId } from './platform';
 import type { AppSettings, DeepPartial } from './settings';
-import type { ConversationBranchTransfer } from './conversationBranch';
+import type {
+  ConversationBranchDelivery,
+  ConversationBranchTransfer,
+} from './conversationBranch';
 
 export type RuntimeRequest =
   | { type: 'settings.get' }
@@ -36,7 +39,13 @@ export type RuntimeRequest =
       transfer: ConversationBranchTransfer;
       preferredMethod: 'native' | 'manual';
     }
-  | { type: 'conversationBranch.open'; branchId: string; transfer: ConversationBranchTransfer }
+  | {
+      type: 'conversationBranch.open';
+      branchId: string;
+      transfer: ConversationBranchTransfer;
+      delivery?: ConversationBranchDelivery;
+      fileName?: string | null;
+    }
   | { type: 'conversationBranch.pending'; platformId: PlatformId }
   | { type: 'conversationBranch.clear'; platformId: PlatformId; id: string }
   | {

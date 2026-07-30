@@ -3,6 +3,7 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import type { UserBoundPlatformAdapter } from '../platforms/base/UserBoundPlatformAdapter';
 import { useI18n } from '../shared/i18n/I18nContext';
 import type {
+  ConversationBranchDelivery,
   ConversationBranchGroup,
   ConversationBranchHandoff,
 } from '../shared/types/conversationBranch';
@@ -12,10 +13,19 @@ import {
   isConversationBranchHandoff,
   isConversationBranchPreparation,
 } from '../shared/utils/conversationBranch';
-import { buildConversationBranchDraft } from './conversationBranches';
+import {
+  BRANCH_DIRECT_CONTEXT_MAX_CHARACTERS,
+  buildConversationBranchDraft,
+  type ConversationBranchDraft,
+  downloadConversationBranchMarkdown,
+} from './conversationBranches';
 import { sendContentRequest } from './runtime';
+import { isExtensionContextUnavailable } from '../shared/runtime/sendRuntimeRequest';
 
 const BRANCH_GROUP_EVENT = 'multi-ai-workspace:conversation-branch-group';
+const HANDOFF_FETCH_RETRY_DELAYS = [120, 250, 500, 1_000, 1_500, 2_500, 4_000] as const;
+const HANDOFF_APPLY_RETRY_DELAYS = [180, 350, 700, 1_200, 2_000, 3_000, 4_000, 5_000] as const;
+const COMPOSER_CONFIRMATION_DELAYS = [0, 80, 220] as const;
 
 interface BranchButtonPosition {
   key: string;
@@ -32,20 +42,58 @@ function announceBranchGroup(group: ConversationBranchGroup): void {
   window.dispatchEvent(new CustomEvent(BRANCH_GROUP_EVENT, { detail: group }));
 }
 
-export async function createConversationBranch(
+function composerContains(current: string, expected: string): boolean {
+  if (current.includes(expected)) return true;
+  const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+  const normalizedExpected = normalize(expected);
+  return Boolean(normalizedExpected) && normalize(current).includes(normalizedExpected);
+}
+
+function branchErrorMessage(reason: unknown, fallback: string, reloadRequired: string): string {
+  if (isExtensionContextUnavailable(reason)) return reloadRequired;
+  return reason instanceof Error && reason.message !== 'BRANCH_PREPARATION_INVALID'
+    ? reason.message
+    : fallback;
+}
+
+async function confirmComposerContent(
+  adapter: UserBoundPlatformAdapter,
+  expected: string,
+): Promise<boolean> {
+  for (const delay of COMPOSER_CONFIRMATION_DELAYS) {
+    if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+    const current = await adapter.readComposer();
+    if (composerContains(current, expected)) return true;
+  }
+  return false;
+}
+
+export type ConversationBranchDraftPreparation =
+  { method: 'native' } | { method: 'manual'; draft: ConversationBranchDraft };
+
+export async function prepareConversationBranch(
   adapter: UserBoundPlatformAdapter,
   messages: PlatformMessage[],
   message: PlatformMessage,
   configuredModel: string | null,
-): Promise<'native' | 'manual'> {
+): Promise<ConversationBranchDraftPreparation> {
+  const result = await adapter.forkConversation(message);
+  if (result.method === 'native') return { method: 'native' };
+
+  const conversation = await adapter.getCurrentConversation();
+  const selectedModel = (await adapter.getSelectedModel?.()) || configuredModel;
+  return {
+    method: 'manual',
+    draft: buildConversationBranchDraft(messages, message, conversation, selectedModel),
+  };
+}
+
+export async function openConversationBranch(
+  draft: ConversationBranchDraft,
+  delivery: ConversationBranchDelivery,
+): Promise<void> {
   let preparedBranchId = '';
   try {
-    const result = await adapter.forkConversation(message);
-    if (result.method === 'native') return 'native';
-
-    const conversation = await adapter.getCurrentConversation();
-    const selectedModel = (await adapter.getSelectedModel?.()) || configuredModel;
-    const draft = buildConversationBranchDraft(messages, message, conversation, selectedModel);
     const preparationResponse = await sendContentRequest({
       type: 'conversationBranch.prepare',
       transfer: draft,
@@ -58,10 +106,13 @@ export async function createConversationBranch(
     preparedBranchId = preparation.branch.id;
     announceBranchGroup(preparation.group);
 
+    const fileName = delivery === 'markdown' ? downloadConversationBranchMarkdown(draft) : null;
     await sendContentRequest({
       type: 'conversationBranch.open',
       branchId: preparedBranchId,
       transfer: draft,
+      delivery,
+      fileName,
     });
     if (preparation.branch.parentBranchId) {
       announceBranchGroup({
@@ -69,7 +120,6 @@ export async function createConversationBranch(
         currentBranchId: preparation.branch.parentBranchId,
       });
     }
-    return 'manual';
   } catch (error) {
     if (preparedBranchId) {
       await sendContentRequest({
@@ -79,6 +129,105 @@ export async function createConversationBranch(
     }
     throw error;
   }
+}
+
+export function ConversationBranchPreviewDialog({
+  draft,
+  busy,
+  error,
+  onClose,
+  onOpen,
+}: {
+  draft: ConversationBranchDraft;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onOpen: (delivery: ConversationBranchDelivery) => void;
+}) {
+  const t = useI18n();
+  const [copied, setCopied] = useState(false);
+  const directAvailable = draft.context.length <= BRANCH_DIRECT_CONTEXT_MAX_CHARACTERS;
+
+  const copy = async () => {
+    try {
+      await copyText(draft.context);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="maw-branch-preview-backdrop" role="presentation">
+      <section
+        className="maw-branch-preview"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="maw-branch-preview-title"
+      >
+        <header>
+          <div>
+            <span>{t('branchConversation')}</span>
+            <strong id="maw-branch-preview-title">{t('branchPreviewTitle')}</strong>
+          </div>
+          <button type="button" aria-label={t('close')} disabled={busy} onClick={onClose}>
+            ×
+          </button>
+        </header>
+        <p className="maw-branch-preview-description">{t('branchPreviewDescription')}</p>
+        <div className="maw-branch-meta">
+          <div>
+            <span>{t('branchSource')}</span>
+            <strong>{draft.sourceTitle ?? draft.sourceUrl}</strong>
+          </div>
+          <div>
+            <span>{t('branchPoint')}</span>
+            <strong>{draft.branchPoint}</strong>
+          </div>
+          <div>
+            <span>{t('branchContextLength')}</span>
+            <strong>{draft.context.length.toLocaleString()}</strong>
+          </div>
+        </div>
+        <label className="maw-branch-context-preview">
+          <span>{t('branchContextPreview')}</span>
+          <textarea readOnly value={draft.context} />
+        </label>
+        {!directAvailable ? (
+          <div className="maw-branch-preview-warning">{t('branchContextWarning')}</div>
+        ) : null}
+        {error ? (
+          <div className="maw-error" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <footer>
+          <button type="button" disabled={busy} onClick={onClose}>
+            {t('cancel')}
+          </button>
+          <button type="button" disabled={busy} onClick={() => void copy()}>
+            {t(copied ? 'branchContextCopied' : 'copyBranchContext')}
+          </button>
+          <button
+            type="button"
+            disabled={busy || !directAvailable}
+            title={!directAvailable ? t('branchDirectUnavailable') : undefined}
+            onClick={() => onOpen('direct')}
+          >
+            {t('openBranchDirect')}
+          </button>
+          <button
+            className="primary"
+            type="button"
+            disabled={busy}
+            onClick={() => onOpen('markdown')}
+          >
+            {t('downloadBranchMarkdown')}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
 }
 
 export function ConversationBranchControls({
@@ -93,6 +242,8 @@ export function ConversationBranchControls({
   const t = useI18n();
   const [positions, setPositions] = useState<BranchButtonPosition[]>([]);
   const [busyKey, setBusyKey] = useState('');
+  const [draft, setDraft] = useState<ConversationBranchDraft | null>(null);
+  const [dialogBusy, setDialogBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const branchableMessages = useMemo(
@@ -159,17 +310,50 @@ export function ConversationBranchControls({
       setBusyKey(key);
       setError('');
       setStatus(t('branchCreating'));
-      const method = await createConversationBranch(adapter, messages, message, configuredModel);
-      setStatus(t(method === 'manual' ? 'branchChatOpened' : 'branchNativeOpened'));
+      const preparation = await prepareConversationBranch(
+        adapter,
+        messages,
+        message,
+        configuredModel,
+      );
+      if (preparation.method === 'native') {
+        setStatus(t('branchNativeOpened'));
+      } else {
+        setDraft(preparation.draft);
+        setStatus('');
+      }
     } catch (reason) {
       setError(
-        reason instanceof Error && reason.message !== 'BRANCH_PREPARATION_INVALID'
-          ? reason.message
-          : t('branchContextUnavailable'),
+        branchErrorMessage(
+          reason,
+          t('branchContextUnavailable'),
+          t('extensionContextReloadRequired'),
+        ),
       );
       setStatus('');
     } finally {
       setBusyKey('');
+    }
+  };
+
+  const openBranch = async (delivery: ConversationBranchDelivery) => {
+    if (!draft) return;
+    try {
+      setDialogBusy(true);
+      setError('');
+      await openConversationBranch(draft, delivery);
+      setDraft(null);
+      setStatus(t(delivery === 'markdown' ? 'branchMarkdownChatOpened' : 'branchChatOpened'));
+    } catch (reason) {
+      setError(
+        branchErrorMessage(
+          reason,
+          t('branchContextUnavailable'),
+          t('extensionContextReloadRequired'),
+        ),
+      );
+    } finally {
+      setDialogBusy(false);
     }
   };
 
@@ -212,6 +396,20 @@ export function ConversationBranchControls({
         <div className="maw-branch-floating-error" role="alert">
           {error}
         </div>
+      ) : null}
+      {draft ? (
+        <ConversationBranchPreviewDialog
+          draft={draft}
+          busy={dialogBusy}
+          error={error}
+          onClose={() => {
+            if (!dialogBusy) {
+              setDraft(null);
+              setError('');
+            }
+          }}
+          onOpen={(delivery) => void openBranch(delivery)}
+        />
       ) : null}
     </>
   );
@@ -346,10 +544,22 @@ export function ConversationBranchHandoffBanner({
   const [handoff, setHandoff] = useState<ConversationBranchHandoff | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [, setCapabilityRevision] = useState(0);
+  const [applyRevision, setApplyRevision] = useState(0);
   const attempted = useRef('');
+  const fetchTimer = useRef<number | null>(null);
+  const applyTimer = useRef<number | null>(null);
+  const applyRetryCount = useRef(0);
   const canInsert = adapter.getCapabilities().has('composer.write');
   const canSelectModel =
     adapter.getCapabilities().has('model.select') && Boolean(adapter.selectModel);
+  const composerContent = handoff
+    ? handoff.delivery === 'markdown'
+      ? t('branchMarkdownComposerPrompt', {
+          fileName: handoff.fileName ?? t('conversationBranchFile'),
+        })
+      : handoff.context
+    : '';
 
   useEffect(() => {
     if (!success) return undefined;
@@ -358,24 +568,66 @@ export function ConversationBranchHandoffBanner({
   }, [success]);
 
   useEffect(() => {
+    return adapter.subscribeBindingChanges(() => {
+      setCapabilityRevision((value) => value + 1);
+    });
+  }, [adapter]);
+
+  useEffect(() => {
     let active = true;
+    let fetchAttempt = 0;
     attempted.current = '';
-    void sendContentRequest({ type: 'conversationBranch.pending', platformId })
-      .then((response) => {
+    applyRetryCount.current = 0;
+    if (fetchTimer.current !== null) window.clearTimeout(fetchTimer.current);
+    if (applyTimer.current !== null) window.clearTimeout(applyTimer.current);
+
+    const fetchPending = async () => {
+      try {
+        const response = await sendContentRequest({
+          type: 'conversationBranch.pending',
+          platformId,
+        });
         if (!active) return;
-        setHandoff(
+        const pending =
           isConversationBranchHandoff(response.value) && response.value.platformId === platformId
             ? response.value
-            : null,
-        );
-      })
-      .catch(() => {
-        if (active) setHandoff(null);
-      });
+            : null;
+        if (pending) {
+          setHandoff(pending);
+          setError('');
+          return;
+        }
+        const delay = HANDOFF_FETCH_RETRY_DELAYS[fetchAttempt];
+        fetchAttempt += 1;
+        if (delay !== undefined) {
+          fetchTimer.current = window.setTimeout(() => void fetchPending(), delay);
+        } else {
+          setHandoff(null);
+        }
+      } catch (reason) {
+        if (!active) return;
+        if (isExtensionContextUnavailable(reason)) {
+          setError(t('extensionContextReloadRequired'));
+          setHandoff(null);
+          return;
+        }
+        const delay = HANDOFF_FETCH_RETRY_DELAYS[fetchAttempt];
+        fetchAttempt += 1;
+        if (delay !== undefined) {
+          fetchTimer.current = window.setTimeout(() => void fetchPending(), delay);
+        } else {
+          setHandoff(null);
+        }
+      }
+    };
+
+    void fetchPending();
     return () => {
       active = false;
+      if (fetchTimer.current !== null) window.clearTimeout(fetchTimer.current);
+      if (applyTimer.current !== null) window.clearTimeout(applyTimer.current);
     };
-  }, [platformId, routeRevision]);
+  }, [platformId, routeRevision, t]);
 
   const complete = useCallback(
     async (current: ConversationBranchHandoff, notice = '') => {
@@ -389,7 +641,18 @@ export function ConversationBranchHandoffBanner({
       if (isConversationBranchGroup(response.value)) announceBranchGroup(response.value);
       setHandoff(null);
       setError('');
-      setSuccess([t('branchContextApplied'), notice].filter(Boolean).join(' '));
+      setSuccess(
+        [
+          t(
+            current.delivery === 'markdown'
+              ? 'branchMarkdownInstructionsApplied'
+              : 'branchContextApplied',
+          ),
+          notice,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      );
     },
     [adapter, platformId, t],
   );
@@ -400,7 +663,7 @@ export function ConversationBranchHandoffBanner({
       try {
         let modelNotice = '';
         const currentText = await adapter.readComposer();
-        if (automatic && currentText.trim() && !currentText.includes(handoff.context)) {
+        if (automatic && currentText.trim() && !composerContains(currentText, composerContent)) {
           setError(t('branchComposerNotEmpty'));
           return;
         }
@@ -411,26 +674,67 @@ export function ConversationBranchHandoffBanner({
             await adapter.selectModel!(handoff.model);
           }
         }
-        if (!currentText.includes(handoff.context)) {
-          await adapter.writeComposer(handoff.context, {
+        if (!composerContains(currentText, composerContent)) {
+          await adapter.writeComposer(composerContent, {
             mode: automatic || !currentText.trim() ? 'replace' : 'insert-at-cursor',
             focus: true,
           });
         }
+        if (!(await confirmComposerContent(adapter, composerContent))) {
+          throw new Error('BRANCH_COMPOSER_WRITE_NOT_CONFIRMED');
+        }
+        if (applyTimer.current !== null) window.clearTimeout(applyTimer.current);
+        applyRetryCount.current = 0;
         await complete(handoff, modelNotice);
       } catch (reason) {
         attempted.current = '';
-        setError(reason instanceof Error ? reason.message : t('requestFailed'));
+        if (automatic && !isExtensionContextUnavailable(reason)) {
+          const delay = HANDOFF_APPLY_RETRY_DELAYS[applyRetryCount.current];
+          applyRetryCount.current += 1;
+          if (delay !== undefined) {
+            setError('');
+            applyTimer.current = window.setTimeout(() => {
+              applyTimer.current = null;
+              setApplyRevision((value) => value + 1);
+            }, delay);
+            return;
+          }
+        }
+        setError(
+          isExtensionContextUnavailable(reason)
+            ? t('extensionContextReloadRequired')
+            : reason instanceof Error && reason.message !== 'BRANCH_COMPOSER_WRITE_NOT_CONFIRMED'
+              ? reason.message
+              : t('branchComposerUnavailable'),
+        );
       }
     },
-    [adapter, canInsert, canSelectModel, complete, handoff, t],
+    [adapter, canInsert, canSelectModel, complete, composerContent, handoff, t],
   );
 
   useEffect(() => {
-    if (!handoff || !canInsert || attempted.current === handoff.id) return;
+    if (!handoff || attempted.current === handoff.id) return;
+    if (!canInsert) {
+      if (applyTimer.current !== null) return;
+      const delay = HANDOFF_APPLY_RETRY_DELAYS[applyRetryCount.current];
+      applyRetryCount.current += 1;
+      if (delay !== undefined) {
+        void adapter.ensureAutomaticBinding().catch(() => undefined);
+        applyTimer.current = window.setTimeout(() => {
+          applyTimer.current = null;
+          setApplyRevision((value) => value + 1);
+        }, delay);
+      } else {
+        setError(t('branchComposerUnavailable'));
+      }
+      return;
+    }
     attempted.current = handoff.id;
-    void apply(true);
-  }, [apply, canInsert, handoff]);
+    applyTimer.current = window.setTimeout(() => {
+      applyTimer.current = null;
+      void apply(true);
+    }, 0);
+  }, [adapter, apply, applyRevision, canInsert, handoff, t]);
 
   const clear = async () => {
     if (!handoff) return;
@@ -453,6 +757,12 @@ export function ConversationBranchHandoffBanner({
     }
   };
 
+  const downloadMarkdown = () => {
+    if (!handoff) return;
+    downloadConversationBranchMarkdown(handoff, handoff.fileName);
+    setError('');
+  };
+
   if (!handoff) {
     return success ? <div className="maw-branch-applied">{success}</div> : null;
   }
@@ -461,11 +771,23 @@ export function ConversationBranchHandoffBanner({
     <aside className="maw-branch-handoff" aria-live="polite">
       <div>
         <strong>{t('branchContextReady')}</strong>
-        <p>{t('branchContextReadyDescription', { count: handoff.messageCount })}</p>
+        <p>
+          {t(
+            handoff.delivery === 'markdown'
+              ? 'branchMarkdownReadyDescription'
+              : 'branchContextReadyDescription',
+            { count: handoff.messageCount },
+          )}
+        </p>
         <span>{handoff.branchName}</span>
       </div>
       {error ? <span className="maw-error">{error}</span> : null}
       <div className="maw-branch-handoff-actions">
+        {handoff.delivery === 'markdown' ? (
+          <button type="button" onClick={downloadMarkdown}>
+            {t('downloadMarkdownAgain')}
+          </button>
+        ) : null}
         <button type="button" onClick={() => void copy()}>
           {t('copyBranchContext')}
         </button>

@@ -24,6 +24,7 @@ function binding(): CustomSiteBindingRecord {
 
 afterEach(() => {
   document.body.replaceChildren();
+  Reflect.deleteProperty(document, 'execCommand');
   vi.restoreAllMocks();
 });
 
@@ -154,6 +155,31 @@ describe('UserBoundPlatformAdapter', () => {
       ['user', 'Question'],
       ['assistant', 'Answer'],
     ]);
+  });
+
+  it('uses the browser editing command for a controlled rich-text composer', async () => {
+    document.body.innerHTML = `
+      <div id="messages"></div>
+      <div id="composer" contenteditable="plaintext-only" role="textbox"></div>
+      <button id="send">Send</button>
+    `;
+    const composer = document.querySelector<HTMLElement>('#composer')!;
+    const execCommand = vi.fn((_command: string, _showUi: boolean, value: string) => {
+      composer.textContent = value;
+      return true;
+    });
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommand,
+    });
+    const adapter = new UserBoundPlatformAdapter('grok', location.hostname);
+    adapter.setBinding({ ...binding(), platformId: 'grok' });
+
+    await adapter.writeComposer('Branch context', { mode: 'replace' });
+
+    expect(execCommand).toHaveBeenCalledWith('insertText', false, 'Branch context');
+    expect(await adapter.readComposer()).toBe('Branch context');
+    adapter.dispose();
   });
 
   it('selects an exact visible model and never guesses a fallback', async () => {

@@ -3,13 +3,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { UserBoundPlatformAdapter } from '../platforms/base/UserBoundPlatformAdapter';
 import { useI18n } from '../shared/i18n/I18nContext';
 import type { PlatformMessage } from '../shared/types/platform';
+import type { ConversationBranchDelivery } from '../shared/types/conversationBranch';
 import type { ConversationExportFormat } from '../shared/types/settings';
 import { BrandIcon } from '../ui/components/BrandIcon';
-import { createConversationBranch } from './ConversationBranchControls';
+import {
+  ConversationBranchPreviewDialog,
+  openConversationBranch,
+  prepareConversationBranch,
+} from './ConversationBranchControls';
+import type { ConversationBranchDraft } from './conversationBranches';
 import { exportConversation } from './conversationExport';
 import { availablePageQuickActions } from './pageQuickActions';
 import { PromptLibraryPanel } from './PromptLibraryPanel';
 import { QuickMenuIcon } from './QuickMenuIcon';
+import { isExtensionContextUnavailable } from '../shared/runtime/sendRuntimeRequest';
 
 export function PageQuickMenu({
   adapter,
@@ -50,6 +57,7 @@ export function PageQuickMenu({
   const [open, setOpen] = useState(false);
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const [branchDraft, setBranchDraft] = useState<ConversationBranchDraft | null>(null);
   const [busy, setBusy] = useState<'branch' | 'export' | 'restore' | 'undo-restore' | ''>('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -95,12 +103,46 @@ export function PageQuickMenu({
       setBusy('branch');
       setError('');
       setNotice(t('branchCreating'));
-      const method = await createConversationBranch(adapter, messages, message, configuredModel);
-      setNotice(t(method === 'manual' ? 'branchChatOpened' : 'branchNativeOpened'));
+      const preparation = await prepareConversationBranch(
+        adapter,
+        messages,
+        message,
+        configuredModel,
+      );
+      if (preparation.method === 'native') {
+        setNotice(t('branchNativeOpened'));
+      } else {
+        setBranchDraft(preparation.draft);
+        setNotice('');
+        setOpen(false);
+      }
       setBranchPickerOpen(false);
-    } catch {
+    } catch (reason) {
       setNotice('');
-      setError(t('branchContextUnavailable'));
+      setError(
+        isExtensionContextUnavailable(reason)
+          ? t('extensionContextReloadRequired')
+          : t('branchContextUnavailable'),
+      );
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const openBranch = async (delivery: ConversationBranchDelivery) => {
+    if (!branchDraft) return;
+    try {
+      setBusy('branch');
+      setError('');
+      await openConversationBranch(branchDraft, delivery);
+      setBranchDraft(null);
+      setNotice(t(delivery === 'markdown' ? 'branchMarkdownChatOpened' : 'branchChatOpened'));
+    } catch (reason) {
+      setError(
+        isExtensionContextUnavailable(reason)
+          ? t('extensionContextReloadRequired')
+          : t('branchContextUnavailable'),
+      );
     } finally {
       setBusy('');
     }
@@ -281,6 +323,20 @@ export function PageQuickMenu({
             <QuickMenuIcon name="workspace" />
           </button>
         </aside>
+      ) : null}
+      {branchDraft ? (
+        <ConversationBranchPreviewDialog
+          draft={branchDraft}
+          busy={busy === 'branch'}
+          error={error}
+          onClose={() => {
+            if (!busy) {
+              setBranchDraft(null);
+              setError('');
+            }
+          }}
+          onOpen={(delivery) => void openBranch(delivery)}
+        />
       ) : null}
     </>
   );

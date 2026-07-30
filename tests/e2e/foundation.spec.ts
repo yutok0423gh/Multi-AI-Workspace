@@ -243,6 +243,18 @@ async function installContentChromeApiMock(
       };
       (
         globalThis as unknown as {
+          __mawSetFormulaCopyFormat: (format: 'latex' | 'mathml' | 'word' | 'notion') => void;
+        }
+      ).__mawSetFormulaCopyFormat = (format) => {
+        const oldValue = structuredClone(settings);
+        Object.assign(settings.markup, { formulaCopyFormat: format });
+        const newValue = structuredClone(settings);
+        for (const listener of listeners) {
+          listener({ 'multiAiWorkspace.settings': { oldValue, newValue } }, 'local');
+        }
+      };
+      (
+        globalThis as unknown as {
           __mawSetConversationExportFormat: (
             format:
               | 'markdown-standard'
@@ -901,6 +913,13 @@ test('prompt rail keeps one visible dot per Prompt in an internal scroll contain
             <article class="user-message">Question three</article>
             <article class="user-message">Question four</article>
             <article class="user-message">Question five</article>
+            <article class="user-message">Question six</article>
+            <article class="user-message">Question seven</article>
+            <article class="user-message">Question eight</article>
+            <article class="user-message">Question nine</article>
+            <article class="user-message">Question ten</article>
+            <article class="user-message">Question eleven</article>
+            <article class="user-message">Question twelve</article>
           </main>
           <textarea id="composer" aria-label="Composer"></textarea>
           <button id="send">Send</button>
@@ -911,15 +930,25 @@ test('prompt rail keeps one visible dot per Prompt in an internal scroll contain
 
   await page.goto('http://127.0.0.1:4173/internal-scroll-fixture.html');
   const promptMarks = page.locator('.maw-message-jump');
-  await expect(promptMarks).toHaveCount(5);
+  await expect(promptMarks).toHaveCount(12);
   const positions = await promptMarks.evaluateAll((elements) =>
     elements.map((element) => Math.round(element.getBoundingClientRect().top)),
   );
-  expect(new Set(positions).size).toBe(5);
+  expect(new Set(positions).size).toBe(12);
   await expect(page.locator('.maw-prompt-card')).toBeHidden();
   await page.locator('.maw-prompt-navigator').hover();
-  await expect(page.locator('.maw-prompt-list button')).toHaveCount(5);
+  const promptList = page.locator('.maw-prompt-list');
+  await expect(promptList.locator('button')).toHaveCount(12);
   await expect(page.locator('.maw-prompt-card')).toBeVisible();
+  const listMetrics = await promptList.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(listMetrics.scrollHeight).toBeGreaterThan(listMetrics.clientHeight);
+  await promptList.hover();
+  await page.mouse.wheel(0, 700);
+  await expect.poll(() => promptList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(promptList.locator('button').last()).toBeInViewport();
   await page.evaluate(() => {
     (
       globalThis as unknown as {
@@ -927,10 +956,10 @@ test('prompt rail keeps one visible dot per Prompt in an internal scroll contain
       }
     ).__mawSetPreventAutoScroll(true);
   });
-  await promptMarks.last().click();
+  await promptList.locator('button').last().click();
   await expect
     .poll(() => page.locator('#messages').evaluate((element) => element.scrollTop))
-    .toBeGreaterThan(1_500);
+    .toBeGreaterThan(5_000);
 });
 
 test('ChatGPT adds a Share-adjacent download button that uses the configured format', async ({
@@ -1647,6 +1676,26 @@ test('selected text tools highlight, quote, and expose direct prompt navigation'
     }),
   ).toBeEnabled();
   await fallbackFormulaDialog.getByRole('button', { name: 'Close' }).click();
+  await page.evaluate(() => {
+    (
+      globalThis as unknown as {
+        __mawSetFormulaCopyFormat: (format: 'mathml') => void;
+      }
+    ).__mawSetFormulaCopyFormat('mathml');
+  });
+  await fallbackFormulaTarget.hover();
+  await fallbackFormulaTarget.click();
+  await expect(page.locator('.maw-formula-copy-feedback')).toContainText(
+    'preferred format is unavailable',
+  );
+  await expect(page.locator('.maw-formula-copy-feedback')).toContainText('rendered text');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (globalThis as unknown as { __mawClipboardText: string }).__mawClipboardText,
+      ),
+    )
+    .toBe('x² + y₁ ≤ √(α + 1)');
 
   const promptMarks = page.locator('.maw-message-jump');
   const promptCards = page.locator('.maw-prompt-list button');
@@ -1661,6 +1710,11 @@ test('selected text tools highlight, quote, and expose direct prompt navigation'
   await expect(promptCards.last()).toContainText('Follow-up question');
 
   await page.getByRole('button', { name: 'Branch from message 2' }).click();
+  const branchPreview = page.getByRole('dialog', { name: 'Conversation branch preview' });
+  await expect(branchPreview).toBeVisible();
+  await expect(branchPreview.getByText('Conversation fixture')).toBeVisible();
+  await expect(branchPreview.locator('textarea')).toHaveValue(/A precise answer/);
+  await branchPreview.getByRole('button', { name: 'Open and fill' }).click();
   await expect(page.getByText(/A context branch opened/)).toBeVisible();
   const branchNavigator = page.getByLabel('Conversation branches');
   await expect(branchNavigator).toBeVisible();
@@ -1668,7 +1722,7 @@ test('selected text tools highlight, quote, and expose direct prompt navigation'
   await branchNavigator.getByRole('button').click();
   await expect(branchNavigator.getByRole('menuitem', { name: /Branch 1/ })).toBeVisible();
   await branchNavigator.locator('.maw-branch-current').click();
-  await expect(page.getByRole('dialog', { name: 'Conversation branch preview' })).toHaveCount(0);
+  await expect(branchPreview).toHaveCount(0);
   const storedBranch = await page.evaluate(() => {
     const records = (
       globalThis as unknown as {

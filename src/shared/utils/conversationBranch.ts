@@ -10,6 +10,7 @@ import type { PlatformId } from '../types/platform';
 import { sanitizeConversationUrl } from './conversationUrl';
 
 export const MAX_BRANCH_TRANSFER_CHARACTERS = 500_000;
+export const MAX_BRANCH_DIRECT_CHARACTERS = 20_000;
 export const BRANCH_HANDOFF_TTL_MS = 15 * 60 * 1_000;
 export const CONVERSATION_BRANCH_SESSION_PREFIX = 'multiAiWorkspace.conversationBranch.';
 export const CONVERSATION_BRANCH_TAB_SESSION_PREFIX = 'multiAiWorkspace.conversationBranch.tab.';
@@ -33,7 +34,7 @@ const NEW_CONVERSATION_URLS: Record<Exclude<PlatformId, 'custom'>, string> = {
   gemini: 'https://gemini.google.com/app',
   deepseek: 'https://chat.deepseek.com/',
   grok: 'https://grok.com/',
-  kimi: 'https://www.kimi.com/',
+  kimi: 'https://www.kimi.com/?chat_enter_method=new_chat',
 };
 
 export function resolveNewConversationUrl(platformId: PlatformId, sourceUrl: string): string {
@@ -109,6 +110,10 @@ export function isConversationBranchHandoff(value: unknown): value is Conversati
     typeof handoff.branchId === 'string' &&
     typeof handoff.branchName === 'string' &&
     handoff.method === 'manual' &&
+    (handoff.delivery === undefined || ['direct', 'markdown'].includes(handoff.delivery)) &&
+    (handoff.fileName === undefined ||
+      typeof handoff.fileName === 'string' ||
+      handoff.fileName === null) &&
     typeof handoff.platformId === 'string' &&
     typeof handoff.accountScopeId === 'string' &&
     (typeof handoff.sourceConversationId === 'string' || handoff.sourceConversationId === null) &&

@@ -1,12 +1,52 @@
 import type { ConversationBranchTransfer } from '../shared/types/conversationBranch';
 import type { PlatformConversation, PlatformMessage } from '../shared/types/platform';
-import { MAX_BRANCH_TRANSFER_CHARACTERS } from '../shared/utils/conversationBranch';
+import {
+  MAX_BRANCH_DIRECT_CHARACTERS,
+  MAX_BRANCH_TRANSFER_CHARACTERS,
+} from '../shared/utils/conversationBranch';
 import { sanitizeConversationUrl } from '../shared/utils/conversationUrl';
 
-export const BRANCH_CONTEXT_WARNING_CHARACTERS = 20_000;
+export const BRANCH_CONTEXT_WARNING_CHARACTERS = MAX_BRANCH_DIRECT_CHARACTERS;
+export const BRANCH_DIRECT_CONTEXT_MAX_CHARACTERS = BRANCH_CONTEXT_WARNING_CHARACTERS;
 
 export interface ConversationBranchDraft extends ConversationBranchTransfer {
   warning: boolean;
+}
+
+function safeDownloadName(value: string): string {
+  const cleaned = value
+    .normalize('NFKC')
+    .replace(/[<>:"/\\|?*]/g, '-')
+    .split('')
+    .map((character) => (character.charCodeAt(0) < 32 ? '-' : character))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/g, '')
+    .trim()
+    .slice(0, 120);
+  return cleaned || 'conversation';
+}
+
+export function conversationBranchMarkdownFileName(
+  draft: Pick<ConversationBranchDraft, 'sourceTitle'>,
+): string {
+  return `${safeDownloadName(draft.sourceTitle ?? 'conversation')}-branch.md`;
+}
+
+export function downloadConversationBranchMarkdown(
+  draft: Pick<ConversationBranchDraft, 'context' | 'sourceTitle'>,
+  preferredFileName?: string | null,
+): string {
+  const fileName = preferredFileName?.trim() || conversationBranchMarkdownFileName(draft);
+  const url = URL.createObjectURL(
+    new Blob([`${draft.context.trimEnd()}\n`], { type: 'text/markdown;charset=utf-8' }),
+  );
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return fileName;
 }
 
 function roleHeading(role: PlatformMessage['role']): string | null {

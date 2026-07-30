@@ -134,7 +134,13 @@ export async function routeMessage(
       case 'conversationBranch.open':
         return {
           ok: true,
-          value: await conversationBranches.open(request.branchId, request.transfer, context.tabId),
+          value: await conversationBranches.open(
+            request.branchId,
+            request.transfer,
+            context.tabId,
+            request.delivery,
+            request.fileName,
+          ),
         };
       case 'conversationBranch.pending':
         return {

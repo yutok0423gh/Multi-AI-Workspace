@@ -136,16 +136,30 @@ describe('markup discovery', () => {
     expect(resolveFormulaCopy(exact, 'word')).toEqual({
       value: '$x^2$',
       approximate: false,
+      format: 'word',
+      usedFallback: false,
     });
     expect(resolveFormulaCopy({ latex: null, mathml: null, renderedText: 'x²' }, 'latex')).toEqual({
       value: 'x^{2}',
       approximate: true,
+      format: 'latex',
+      usedFallback: false,
     });
     expect(
       resolveFormulaCopy({ latex: 'x^2', mathml: null, renderedText: 'x²' }, 'mathml'),
     ).toEqual({
-      value: null,
+      value: 'x^2',
       approximate: false,
+      format: 'latex',
+      usedFallback: true,
+    });
+    expect(
+      resolveFormulaCopy({ latex: null, mathml: null, renderedText: 'x'.repeat(5001) }, 'word'),
+    ).toEqual({
+      value: 'x'.repeat(5001),
+      approximate: false,
+      format: 'rendered',
+      usedFallback: true,
     });
   });
 });

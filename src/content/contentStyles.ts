@@ -34,12 +34,15 @@ export const contentStyles = `
   .maw-highlight-layer { position: absolute; z-index: 0; inset: 0; overflow: hidden; pointer-events: none; }
   .maw-highlight-rectangle { position: fixed; border-radius: 3px; box-shadow: inset 0 -1px 0 rgba(40,48,70,.14); mix-blend-mode: multiply; pointer-events: none; }
   .maw-prompt-navigator { position: absolute; z-index: 1; top: 15vh; right: 5px; width: 34px; height: 70vh; pointer-events: none; }
-  .maw-prompt-card { position: absolute; top: 50%; right: 34px; display: grid; width: min(300px, calc(100vw - 92px)); max-height: min(360px, 62vh); overflow: hidden; visibility: hidden; border: 1px solid var(--maw-line); border-radius: 10px; padding: 10px; opacity: 0; background: var(--maw-surface); box-shadow: 0 14px 38px rgba(35,51,45,.16); transform: translateY(-50%) translateX(8px) scale(.98); transform-origin: right center; pointer-events: none; transition: opacity .16s ease, transform .16s ease, visibility 0s linear .16s; }
+  .maw-prompt-card { position: absolute; top: 50%; right: 34px; display: grid; grid-template-rows: auto minmax(0,1fr); width: min(300px, calc(100vw - 92px)); max-height: min(360px, 62vh); overflow: hidden; visibility: hidden; border: 1px solid var(--maw-line); border-radius: 10px; padding: 10px; opacity: 0; background: var(--maw-surface); box-shadow: 0 14px 38px rgba(35,51,45,.16); transform: translateY(-50%) translateX(8px) scale(.98); transform-origin: right center; pointer-events: none; transition: opacity .16s ease, transform .16s ease, visibility 0s linear .16s; }
   .maw-prompt-navigator:hover .maw-prompt-card, .maw-prompt-navigator:focus-within .maw-prompt-card { visibility: visible; opacity: 1; transform: translateY(-50%) translateX(0) scale(1); pointer-events: auto; transition-delay: 0s; }
   .maw-prompt-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 3px 8px; }
   .maw-prompt-card-heading strong { overflow: hidden; color: var(--maw-ink); font: 800 10px/1.25 Aptos, "Segoe UI Variable", system-ui, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
   .maw-prompt-card-heading span { display: grid; flex: none; min-width: 20px; height: 20px; place-items: center; border-radius: 4px; color: var(--maw-muted); background: #edf0ec; font: 800 9px Aptos, "Segoe UI Variable", system-ui, sans-serif; }
-  .maw-prompt-list { display: grid; gap: 5px; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .maw-prompt-list { display: grid; gap: 5px; min-height: 0; max-height: calc(min(360px, 62vh) - 42px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: #9baba3 transparent; scrollbar-gutter: stable; scrollbar-width: thin; touch-action: pan-y; }
+  .maw-prompt-list::-webkit-scrollbar { width: 7px; }
+  .maw-prompt-list::-webkit-scrollbar-track { background: transparent; }
+  .maw-prompt-list::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9baba3; background-clip: padding-box; }
   .maw-prompt-list button { display: grid; grid-template-columns: 22px minmax(0,1fr); align-items: center; gap: 7px; width: 100%; border: 1px solid transparent; border-radius: 6px; padding: 7px; color: var(--maw-muted); background: #f4f6f2; cursor: pointer; text-align: left; }
   .maw-prompt-list button > span { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 4px; color: #fff; background: #70877c; font: 800 8px Aptos, "Segoe UI Variable", system-ui, sans-serif; }
   .maw-prompt-list button p { display: -webkit-box; overflow: hidden; margin: 0; font: 600 9px/1.42 Aptos, "Segoe UI Variable", system-ui, sans-serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -240,6 +243,25 @@ export const contentStyles = `
   .maw-branch-trigger:focus-visible { outline: 3px solid #f2b84b; outline-offset: 2px; }
   .maw-branch-floating-error { position: fixed; z-index: 16; right: 20px; bottom: 76px; max-width: min(420px, calc(100vw - 40px)); border-radius: 12px; padding: 10px 12px; color: #8a3030; background: #fff0f0; box-shadow: 0 12px 34px rgba(77,27,27,.22); pointer-events: auto; font: 600 11px/1.5 Inter, system-ui, sans-serif; }
   .maw-branch-floating-status, .maw-branch-applied { position: fixed; z-index: 16; right: 20px; bottom: 76px; max-width: min(420px, calc(100vw - 40px)); border-radius: 12px; padding: 10px 12px; color: #276345; background: #eaf8f0; box-shadow: 0 12px 34px rgba(30,77,52,.18); pointer-events: none; font: 700 11px/1.5 Inter, system-ui, sans-serif; }
+  .maw-branch-preview-backdrop { position: fixed; z-index: 24; inset: 0; display: grid; place-items: center; padding: 22px; background: rgba(25,38,33,.46); backdrop-filter: blur(7px); pointer-events: auto; }
+  .maw-branch-preview { display: grid; gap: 14px; width: min(760px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 32px)); overflow: auto; border: 1px solid #d3ded8; border-radius: 18px; padding: 20px; color: var(--maw-ink); background: #fbfcfa; box-shadow: 0 28px 80px rgba(22,42,34,.28); font-family: Aptos, "Segoe UI Variable", system-ui, sans-serif; }
+  .maw-branch-preview > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .maw-branch-preview > header div { display: grid; gap: 3px; }
+  .maw-branch-preview > header span, .maw-branch-context-preview > span { color: #718079; font: 750 9px/1.2 Aptos, "Segoe UI Variable", system-ui, sans-serif; letter-spacing: .09em; text-transform: uppercase; }
+  .maw-branch-preview > header strong { color: #172a23; font: 760 19px/1.3 Aptos, "Segoe UI Variable", system-ui, sans-serif; letter-spacing: -.015em; }
+  .maw-branch-preview > header button { display: grid; flex: none; width: 34px; height: 34px; place-items: center; border: 1px solid transparent; border-radius: 10px; padding: 0; color: #65736d; background: #eef2ef; cursor: pointer; font: 700 20px/1 Aptos, "Segoe UI Variable", system-ui, sans-serif; }
+  .maw-branch-preview-description { margin: 0; color: #5e6e67; font: 520 12px/1.6 Aptos, "Segoe UI Variable", system-ui, sans-serif; }
+  .maw-branch-meta { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,1.65fr) auto; gap: 8px; }
+  .maw-branch-meta > div { display: grid; min-width: 0; gap: 4px; border: 1px solid #dce4df; border-radius: 11px; padding: 10px 11px; background: #f3f6f3; }
+  .maw-branch-meta span { color: #77847e; font: 700 9px/1.2 Aptos, "Segoe UI Variable", system-ui, sans-serif; }
+  .maw-branch-meta strong { overflow: hidden; color: #294239; font: 700 10px/1.45 Aptos, "Segoe UI Variable", system-ui, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+  .maw-branch-context-preview { display: grid; gap: 7px; min-height: 0; }
+  .maw-branch-context-preview textarea { width: 100%; min-height: 190px; max-height: 38vh; resize: vertical; border: 1px solid #d6e0da; border-radius: 12px; padding: 12px 14px; color: #30453d; background: #f5f7f4; box-sizing: border-box; font: 500 10px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .maw-branch-preview-warning { border: 1px solid #e5d4a8; border-radius: 10px; padding: 10px 12px; color: #795d20; background: #fff8e8; font: 650 10px/1.5 Aptos, "Segoe UI Variable", system-ui, sans-serif; }
+  .maw-branch-preview > footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .maw-branch-preview > footer button { border: 1px solid #ced9d3; border-radius: 10px; padding: 9px 12px; color: #304c41; background: #fff; cursor: pointer; font: 750 10px/1.2 Aptos, "Segoe UI Variable", system-ui, sans-serif; }
+  .maw-branch-preview > footer button.primary { border-color: var(--maw-pine); color: #fff; background: var(--maw-pine); }
+  .maw-branch-preview button:disabled { cursor: not-allowed; opacity: .45; }
   .maw-branch-handoff-actions { display: flex; flex-wrap: wrap; gap: 7px; }
   .maw-branch-handoff-actions button { border: 1px solid #d4d9e8; border-radius: 9px; padding: 8px 11px; color: #414b64; background: #fff; cursor: pointer; font: 800 10px Inter, system-ui, sans-serif; }
   .maw-branch-handoff-actions button.primary { color: #fff; border-color: var(--maw-pine); background: var(--maw-pine); }
@@ -307,7 +329,7 @@ export const contentStyles = `
   .maw-markup-actions button:first-child { color: #fff; background: var(--maw-pine); border-color: var(--maw-pine); }
   .maw-markup-actions button:disabled { cursor: not-allowed; opacity: .42; }
   .maw-markup-dialog button:focus-visible { outline: 3px solid #f2b84b; outline-offset: 2px; }
-  @media (max-width: 640px) { .maw-selection-preview { display: none; } .maw-selection-popover { grid-template-columns: 1fr auto; } .maw-selection-actions { flex-wrap: wrap; } .maw-selection-dismiss { grid-column: 2; grid-row: 1; } .maw-branch-meta > div { grid-template-columns: 1fr; gap: 3px; } .maw-branch-handoff { right: 10px; bottom: 70px; width: calc(100vw - 20px); } .maw-markup-backdrop { padding: 10px; } .maw-markup-dialog.formula { width: calc(100vw - 20px); border-radius: 16px; padding: 16px; } .maw-formula-actions { grid-template-columns: 1fr; } .maw-formula-actions > button[data-format="rendered"] { grid-column: auto; } }
+  @media (max-width: 640px) { .maw-selection-preview { display: none; } .maw-selection-popover { grid-template-columns: 1fr auto; } .maw-selection-actions { flex-wrap: wrap; } .maw-selection-dismiss { grid-column: 2; grid-row: 1; } .maw-branch-preview-backdrop { padding: 10px; } .maw-branch-preview { width: calc(100vw - 20px); border-radius: 15px; padding: 15px; } .maw-branch-meta { grid-template-columns: 1fr; } .maw-branch-preview > footer { display: grid; grid-template-columns: 1fr 1fr; } .maw-branch-handoff { right: 10px; bottom: 70px; width: calc(100vw - 20px); } .maw-markup-backdrop { padding: 10px; } .maw-markup-dialog.formula { width: calc(100vw - 20px); border-radius: 16px; padding: 16px; } .maw-formula-actions { grid-template-columns: 1fr; } .maw-formula-actions > button[data-format="rendered"] { grid-column: auto; } }
   @media (prefers-reduced-motion: no-preference) { .maw-launcher { transition: transform .16s ease; } .maw-launcher:hover { transform: translateY(-2px); } .maw-markup-dialog.formula { animation: maw-formula-dialog-in .16s ease-out both; } }
   @media (prefers-reduced-motion: reduce) { .maw-effect-layer { display: none !important; } }
   @keyframes maw-formula-dialog-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }

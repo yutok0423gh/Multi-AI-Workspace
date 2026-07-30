@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 
 import { I18nProvider, useI18n } from '../shared/i18n/I18nContext';
 import type { UserBoundPlatformAdapter } from '../platforms/base/UserBoundPlatformAdapter';
-import { shouldShowExtensionTimeline } from '../platforms/nativeFeatures';
+import {
+  shouldShowExtensionBranch,
+  shouldShowExtensionTimeline,
+} from '../platforms/nativeFeatures';
 import type { PlatformId } from '../shared/types/platform';
 import type { AppSettings } from '../shared/types/settings';
 import { FeatureErrorBoundary } from '../ui/components/FeatureErrorBoundary';
@@ -79,6 +82,7 @@ function ContentPanel({
   const canBranch =
     capabilities.includes('conversation.fork.manual') ||
     capabilities.includes('conversation.fork.native');
+  const extensionBranchEnabled = shouldShowExtensionBranch(adapter.id);
   const canPin = settings.features.timeline;
   const extensionTimelineEnabled =
     settings.features.timeline && shouldShowExtensionTimeline(adapter.id);
@@ -193,7 +197,7 @@ function ContentPanel({
 
   return (
     <div className="maw-shell">
-      {canBranch ? (
+      {extensionBranchEnabled ? (
         <>
           <ConversationBranchHandoffBanner
             adapter={adapter}

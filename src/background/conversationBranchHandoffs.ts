@@ -4,6 +4,7 @@ import { WorkspaceDatabase } from '../shared/storage/indexedDb';
 import type {
   ConversationBranchGroup,
   ConversationBranchHandoff,
+  ConversationBranchDelivery,
   ConversationBranchMethod,
   ConversationBranchPreparation,
   ConversationBranchRecord,
@@ -16,6 +17,7 @@ import {
   conversationBranchSessionKey,
   conversationBranchTabSessionKey,
   isConversationBranchHandoff,
+  MAX_BRANCH_DIRECT_CHARACTERS,
   resolveNewConversationUrl,
   validateConversationBranchTransfer,
 } from '../shared/utils/conversationBranch';
@@ -189,8 +191,15 @@ export class ConversationBranchHandoffService {
     branchId: string,
     transferInput: ConversationBranchTransfer,
     sourceTabId?: number,
+    delivery: ConversationBranchDelivery = 'direct',
+    fileName: string | null = null,
   ): Promise<ConversationBranchHandoff> {
     const transfer = validateConversationBranchTransfer(transferInput);
+    const safeDelivery: ConversationBranchDelivery =
+      delivery === 'markdown' ? 'markdown' : 'direct';
+    if (safeDelivery === 'direct' && transfer.context.length > MAX_BRANCH_DIRECT_CHARACTERS) {
+      throw new Error('Long conversation branches require a Markdown handoff.');
+    }
     const branch = await this.database.get('conversationBranches', branchId);
     if (!branch || branch.platformId !== transfer.platformId) {
       throw new Error('Conversation branch preparation was not found.');
@@ -221,6 +230,8 @@ export class ConversationBranchHandoffService {
       branchId: branch.id,
       branchName: branch.name,
       method: 'manual',
+      delivery: safeDelivery,
+      fileName: safeDelivery === 'markdown' ? fileName?.trim().slice(0, 240) || null : null,
       createdAt: now,
       expiresAt: now + BRANCH_HANDOFF_TTL_MS,
     };

@@ -3,6 +3,7 @@ import type { PlatformId } from './platform';
 export type ConversationBranchMethod = 'original' | 'native' | 'manual';
 export type ConversationBranchState = 'creating' | 'ready';
 export type ConversationBranchMessageRole = 'user' | 'assistant' | 'system';
+export type ConversationBranchDelivery = 'direct' | 'markdown';
 
 export interface ConversationBranchTransfer {
   platformId: PlatformId;
@@ -25,6 +26,8 @@ export interface ConversationBranchHandoff extends ConversationBranchTransfer {
   branchId: string;
   branchName: string;
   method: 'manual';
+  delivery?: ConversationBranchDelivery;
+  fileName?: string | null;
   createdAt: number;
   expiresAt: number;
 }

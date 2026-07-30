@@ -8,11 +8,13 @@ import {
   ConversationBranchHandoffBanner,
   ConversationBranchNavigator,
 } from '../../src/content/ConversationBranchControls';
+import { ContentApp } from '../../src/content/App';
 import { buildConversationBranchDraft } from '../../src/content/conversationBranches';
 import { UserBoundPlatformAdapter } from '../../src/platforms/base/UserBoundPlatformAdapter';
 import { SUPPORTED_PLATFORMS } from '../../src/shared/constants/platforms';
 import { I18nProvider } from '../../src/shared/i18n/I18nContext';
 import { WorkspaceDatabase } from '../../src/shared/storage/indexedDb';
+import { DEFAULT_SETTINGS } from '../../src/shared/storage/defaultSettings';
 import type {
   ConversationBranchGroup,
   ConversationBranchHandoff,
@@ -169,6 +171,27 @@ function setupAdapter(): UserBoundPlatformAdapter {
   return adapter;
 }
 
+function setupEmptyPlatformAdapter(platformId: 'grok' | 'kimi'): UserBoundPlatformAdapter {
+  document.body.innerHTML = '<textarea id="composer"></textarea>';
+  const adapter = new UserBoundPlatformAdapter(platformId, location.hostname);
+  adapter.setBinding({
+    id: `binding:${platformId}:${location.origin}`,
+    origin: location.origin,
+    platformId,
+    accountScopeId: 'anonymous',
+    composerSelector: '#composer',
+    sendButtonSelector: null,
+    messageContainerSelector: null,
+    userMessageSelector: null,
+    assistantMessageSelector: null,
+    enabled: true,
+    lastValidatedAt: 1,
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  return adapter;
+}
+
 beforeEach(async () => {
   await database.clear('conversationBranches');
 });
@@ -231,16 +254,46 @@ describe('conversation branches', () => {
     expect(resolveNewConversationUrl('custom', 'https://example.com/chat/1')).toBe(
       'https://example.com/',
     );
+    expect(resolveNewConversationUrl('kimi', 'https://www.kimi.com/chat/one')).toBe(
+      'https://www.kimi.com/?chat_enter_method=new_chat',
+    );
     for (const platform of SUPPORTED_PLATFORMS) {
       const newChat = resolveNewConversationUrl(
         platform.id,
         `https://${platform.hostname}/conversation/one`,
       );
       expect(isNewConversationUrl(platform.id, newChat)).toBe(true);
-      expect(isNewConversationUrl(platform.id, `${newChat.replace(/\/$/, '')}/existing`)).toBe(
-        false,
-      );
+      const existingConversation = new URL(newChat);
+      existingConversation.pathname = `${
+        existingConversation.pathname === '/' ? '' : existingConversation.pathname
+      }/existing`;
+      existingConversation.search = '';
+      expect(isNewConversationUrl(platform.id, existingConversation.toString())).toBe(false);
     }
+  });
+
+  it('enforces the Markdown handoff for long context in the background service', async () => {
+    const service = new ConversationBranchHandoffService(database);
+    const longTransfer = {
+      ...transfer('custom', 'http://localhost/source'),
+      context: 'A'.repeat(20_001),
+    };
+    const preparation = await service.prepare(longTransfer, 'manual');
+
+    await expect(service.open(preparation.branch.id, longTransfer)).rejects.toThrow(
+      'require a Markdown handoff',
+    );
+    const handoff = await service.open(
+      preparation.branch.id,
+      longTransfer,
+      undefined,
+      'markdown',
+      'source-branch.md',
+    );
+    expect(handoff).toMatchObject({
+      delivery: 'markdown',
+      fileName: 'source-branch.md',
+    });
   });
 
   it('deduplicates an in-flight branch and restores its branch group after a service restart', async () => {
@@ -273,7 +326,7 @@ describe('conversation branches', () => {
     expect(updateTab).toHaveBeenCalledWith(7, { url: 'http://localhost/source' });
   });
 
-  it('creates a branch immediately from the message action without a preview dialog', async () => {
+  it('previews a branch before opening a direct context handoff', async () => {
     setupDocument();
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0);
@@ -301,16 +354,72 @@ describe('conversation branches', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Branch from message 2' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Conversation branch preview' });
+    expect(within(dialog).getByDisplayValue(/# Conversation Branch Context/)).toBeVisible();
+    expect(sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'conversationBranch.open' }),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Open and fill' }));
     await waitFor(() =>
       expect(sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'conversationBranch.open',
           branchId: 'branch-1',
+          delivery: 'direct',
         }),
       ),
     );
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(document.querySelector<HTMLTextAreaElement>('#composer')?.value).toBe('');
+    adapter.dispose();
+  });
+
+  it('routes long branch context through a downloaded Markdown handoff', async () => {
+    setupDocument();
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:branch-context');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const downloadClick = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+    const nextGroup = group();
+    const sendMessage = vi
+      .spyOn(browser.runtime, 'sendMessage')
+      .mockImplementation(async (request) => {
+        const runtime = request as { type?: string };
+        if (runtime.type === 'conversationBranch.prepare') {
+          return { ok: true, value: { branch: nextGroup.branches[1], group: nextGroup } };
+        }
+        return { ok: true };
+      });
+    const adapter = setupAdapter();
+    vi.spyOn(adapter, 'forkConversation').mockResolvedValue({ method: 'manual' });
+    const messages = [message('user', 0, 'Long context '.repeat(1_800))];
+
+    render(
+      <I18nProvider locale="en">
+        <ConversationBranchControls adapter={adapter} messages={messages} configuredModel={null} />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Branch from message 1' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Conversation branch preview' });
+    expect(within(dialog).getByRole('button', { name: 'Open and fill' })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Download Markdown and open' }));
+
+    await waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'conversationBranch.open',
+          delivery: 'markdown',
+          fileName: 'conversation-branch.md',
+        }),
+      ),
+    );
+    expect(downloadClick).toHaveBeenCalledOnce();
     adapter.dispose();
   });
 
@@ -350,6 +459,8 @@ describe('conversation branches', () => {
       branchId: 'branch-1',
       branchName: 'Branch 1',
       method: 'manual',
+      delivery: 'direct',
+      fileName: null,
       createdAt: 1,
       expiresAt: Date.now() + 60_000,
     };
@@ -379,6 +490,170 @@ describe('conversation branches', () => {
       expect.objectContaining({ type: 'conversationBranch.complete', id: 'handoff-1' }),
     );
     expect(screen.getByText(/Branch context was filled/)).toBeVisible();
+    adapter.dispose();
+  });
+
+  it('waits for a late branch handoff and a late composer before filling it', async () => {
+    setupDocument();
+    document.querySelector('#composer')?.remove();
+    const adapter = setupAdapter();
+    const handoff: ConversationBranchHandoff = {
+      ...transfer('custom', 'http://localhost/source'),
+      id: 'handoff-delayed',
+      branchId: 'branch-1',
+      branchName: 'Branch 1',
+      method: 'manual',
+      delivery: 'direct',
+      fileName: null,
+      createdAt: 1,
+      expiresAt: Date.now() + 60_000,
+    };
+    let pendingCalls = 0;
+    const sendClick = vi.fn();
+    document.querySelector<HTMLButtonElement>('#send')?.addEventListener('click', sendClick);
+    const sendMessage = vi
+      .spyOn(browser.runtime, 'sendMessage')
+      .mockImplementation(async (request) => {
+        const runtime = request as { type?: string };
+        if (runtime.type === 'conversationBranch.pending') {
+          pendingCalls += 1;
+          return { ok: true, value: pendingCalls < 2 ? null : handoff };
+        }
+        if (runtime.type === 'binding.save') {
+          return { ok: true, binding: adapter.getBinding() };
+        }
+        if (runtime.type === 'conversationBranch.complete') return { ok: true, value: group() };
+        return { ok: true };
+      });
+
+    render(
+      <I18nProvider locale="en">
+        <ConversationBranchHandoffBanner adapter={adapter} platformId="custom" routeRevision={0} />
+      </I18nProvider>,
+    );
+
+    window.setTimeout(() => {
+      const composer = document.createElement('textarea');
+      composer.id = 'composer';
+      document.body.append(composer);
+    }, 300);
+
+    await waitFor(
+      () =>
+        expect(document.querySelector<HTMLTextAreaElement>('#composer')?.value).toBe(
+          handoff.context,
+        ),
+      { timeout: 3_000 },
+    );
+    expect(pendingCalls).toBeGreaterThanOrEqual(2);
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'conversationBranch.complete', id: 'handoff-delayed' }),
+    );
+    expect(sendClick).not.toHaveBeenCalled();
+    adapter.dispose();
+  });
+
+  it.each(['grok', 'kimi'] as const)(
+    'mounts the %s handoff receiver on an empty new chat and fills the composer',
+    async (platformId) => {
+      const adapter = setupEmptyPlatformAdapter(platformId);
+      const handoff: ConversationBranchHandoff = {
+        ...transfer(platformId, `https://${platformId}.example/source`),
+        id: `handoff-empty-${platformId}`,
+        branchId: 'branch-1',
+        branchName: 'Branch 1',
+        method: 'manual',
+        delivery: 'direct',
+        fileName: null,
+        createdAt: 1,
+        expiresAt: Date.now() + 60_000,
+      };
+      const settings = structuredClone(DEFAULT_SETTINGS);
+      settings.locale = 'en';
+      settings.features.promptRewrite = false;
+      settings.features.promptManager = false;
+      settings.features.draft = false;
+      settings.features.timeline = false;
+      settings.features.export = false;
+      settings.markup.mermaidEnabled = false;
+      settings.markup.formulaCopyEnabled = false;
+      expect(adapter.getCapabilities()).not.toContain('messages.read');
+      expect(adapter.getCapabilities()).not.toContain('conversation.fork.manual');
+
+      const sendMessage = vi
+        .spyOn(browser.runtime, 'sendMessage')
+        .mockImplementation(async (request) => {
+          const runtime = request as { type?: string };
+          if (runtime.type === 'conversationBranch.pending') return { ok: true, value: handoff };
+          if (runtime.type === 'conversationBranch.complete') return { ok: true, value: group() };
+          return { ok: true };
+        });
+
+      render(
+        <ContentApp
+          platformId={platformId}
+          platformLabel={platformId}
+          settings={settings}
+          adapter={adapter}
+          onLocaleChange={vi.fn()}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(document.querySelector<HTMLTextAreaElement>('#composer')?.value).toBe(
+          handoff.context,
+        ),
+      );
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'conversationBranch.complete',
+          id: `handoff-empty-${platformId}`,
+        }),
+      );
+      adapter.dispose();
+    },
+  );
+
+  it('fills only a short attachment instruction for a Markdown branch handoff', async () => {
+    setupDocument();
+    const adapter = setupAdapter();
+    const handoff: ConversationBranchHandoff = {
+      ...transfer('custom', 'http://localhost/source'),
+      context: `# Conversation Branch Context\n\n${'Sensitive branch context '.repeat(1_000)}`,
+      id: 'handoff-markdown',
+      branchId: 'branch-1',
+      branchName: 'Branch 1',
+      method: 'manual',
+      delivery: 'markdown',
+      fileName: 'Source chat-branch.md',
+      createdAt: 1,
+      expiresAt: Date.now() + 60_000,
+    };
+    const sendClick = vi.fn();
+    document.querySelector<HTMLButtonElement>('#send')?.addEventListener('click', sendClick);
+    vi.spyOn(browser.runtime, 'sendMessage').mockImplementation(async (request) => {
+      const runtime = request as { type?: string };
+      if (runtime.type === 'conversationBranch.pending') return { ok: true, value: handoff };
+      if (runtime.type === 'conversationBranch.complete') return { ok: true, value: group() };
+      return { ok: true };
+    });
+
+    render(
+      <I18nProvider locale="en">
+        <ConversationBranchHandoffBanner adapter={adapter} platformId="custom" routeRevision={0} />
+      </I18nProvider>,
+    );
+
+    await waitFor(() =>
+      expect(document.querySelector<HTMLTextAreaElement>('#composer')?.value).toContain(
+        'Source chat-branch.md',
+      ),
+    );
+    expect(document.querySelector<HTMLTextAreaElement>('#composer')?.value).not.toContain(
+      'Sensitive branch context',
+    );
+    expect(sendClick).not.toHaveBeenCalled();
+    expect(screen.getByText(/attachment instruction/)).toBeVisible();
     adapter.dispose();
   });
 

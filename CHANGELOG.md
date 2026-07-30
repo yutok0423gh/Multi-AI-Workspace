@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.1 - 2026-07-30
+
+- Added a review-first context-branch preview for Claude, DeepSeek, Grok, and Kimi. Short transfers can open a new chat and fill its composer, while long transfers are downloaded locally as Markdown and place only a short attachment instruction in the new composer.
+- Fixed Grok and Kimi branch handoffs on empty new-chat pages by keeping the session-only receiver active before any conversation messages exist. Composer writes now support controlled rich-text editors, confirm the inserted content, retry delayed page bindings, and never send automatically.
+- Hardened content-to-background messaging against an invalidated extension context so affected page features show a reload-required state instead of leaking low-level `sendMessage` errors or breaking the host website.
+- Made one-click formula copy fall back to verified LaTeX or displayed text when the configured format is unavailable, with accurate feedback about the format actually copied.
+- Made long Prompt-navigation lists wheel-scrollable with a fixed heading and count so every detected Prompt remains reachable without expanding beyond the viewport.
+- Added focused unit and browser regression coverage for branch preview, direct and Markdown handoffs, delayed composers, empty Grok/Kimi chats, rich-text insertion, runtime recovery, formula fallback, and scrollable navigation.
+
 ## 2.1.0 - 2026-07-30
 
 - Removed extension-owned conversation branch controls from ChatGPT and Gemini. Their adapters no longer advertise manual or extension-driven native branch capabilities, compatibility self-check reports the verified platform-native feature, and page shortcuts remain free of duplicate branch actions.

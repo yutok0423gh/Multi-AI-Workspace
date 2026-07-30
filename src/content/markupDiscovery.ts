@@ -392,6 +392,8 @@ export function formatFormula(
 export interface ResolvedFormulaCopy {
   value: string | null;
   approximate: boolean;
+  format: AppSettings['markup']['formulaCopyFormat'] | 'rendered';
+  usedFallback: boolean;
 }
 
 export function resolveFormulaCopy(
@@ -399,10 +401,40 @@ export function resolveFormulaCopy(
   format: AppSettings['markup']['formulaCopyFormat'],
 ): ResolvedFormulaCopy {
   const exact = formatFormula(target, format);
-  if (exact) return { value: exact, approximate: false };
-  if (format === 'mathml') return { value: null, approximate: false };
-  return {
-    value: formatApproximateFormula(target.renderedText, format),
-    approximate: true,
-  };
+  if (exact) {
+    return { value: exact, approximate: false, format, usedFallback: false };
+  }
+
+  if (format !== 'mathml') {
+    const approximate = formatApproximateFormula(target.renderedText, format);
+    if (approximate) {
+      return { value: approximate, approximate: true, format, usedFallback: false };
+    }
+  }
+
+  if (target.latex) {
+    return {
+      value: target.latex,
+      approximate: false,
+      format: 'latex',
+      usedFallback: true,
+    };
+  }
+  if (target.renderedText) {
+    return {
+      value: target.renderedText,
+      approximate: false,
+      format: 'rendered',
+      usedFallback: true,
+    };
+  }
+  if (target.mathml) {
+    return {
+      value: target.mathml,
+      approximate: false,
+      format: 'mathml',
+      usedFallback: true,
+    };
+  }
+  return { value: null, approximate: false, format, usedFallback: false };
 }
